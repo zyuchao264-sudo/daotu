@@ -4,13 +4,16 @@ const { Server } = require('socket.io');
 const fs = require('fs');
 const path = require('path');
 
+
 const app = express();
 const server = http.createServer(app);
 const io = new Server(server, {
   cors: { origin: "*" }
 });
 
+
 const DATA_FILE = path.join(__dirname, "data.json");
+
 
 // 初始化默认数据
 const defaultData = {
@@ -79,9 +82,11 @@ const defaultData = {
   ]
 };
 
+
 if (!fs.existsSync(DATA_FILE)) {
   fs.writeFileSync(DATA_FILE, JSON.stringify(defaultData,null,2),"utf8");
 }
+
 
 function loadData(){
   return JSON.parse(fs.readFileSync(DATA_FILE,"utf8"));
@@ -90,7 +95,9 @@ function saveData(d){
   fs.writeFileSync(DATA_FILE, JSON.stringify(d,null,2),"utf8");
 }
 
+
 app.use(express.static(__dirname));
+
 
 io.on('connection', (socket)=>{
   console.log("客户端已连接",socket.id);
@@ -105,6 +112,7 @@ io.on('connection', (socket)=>{
     console.log("客户端断开",socket.id);
   })
 })
+
 
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, ()=>{
