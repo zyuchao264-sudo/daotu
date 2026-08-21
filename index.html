@@ -65,7 +65,7 @@
             font-weight:bold;
         }
         /* ==========新增：顶部悬浮跟随横幅========== */
-        .top‑hero‑banner{
+        .top-hero-banner{
             height:130px;
             width:100%;
             border-radius:8px;
@@ -95,7 +95,7 @@
             border:1px solid #d4c8ad;
             overflow:hidden;
         }
-        .card‑hero‑img{
+        .card-hero-img{
             width:calc(100% + 24px);
             height:110px;
             border-radius:6px 6px 0 0;
@@ -155,7 +155,7 @@
     </div>
 
     <!-- =====【新增】悬浮跟随大图横幅===== -->
-    <div class="top‑hero‑banner" id="topBanner"></div>
+    <div class="top-hero-banner" id="topBanner"></div>
 
     <div id="profView" class="view-panel active">
         <div class="prof-container" id="profContainer"></div>
@@ -267,7 +267,7 @@ function renderProfList(){
         div.dataset.profname = prof.name; //悬浮读取职业名称
 
         div.innerHTML = `
-            <div class="card‑hero‑img" style="background-image:url('${imgUrl}')"></div>
+            <div class="card-hero-img" style="background-image:url('${imgUrl}')"></div>
             <h3 style="margin:4px 0;">${prof.name}</h3>
             <div>血量: ${prof.hp || 8} | 装备位: ${prof.equip || "1武器1护具1鞋1道具1"}</div>
             <div style="margin:6px 0;white-space:pre-wrap;">${prof.desc||""}</div>
@@ -310,7 +310,7 @@ function renderProfList(){
 
 // ==========悬浮监听逻辑：hover卡片切换顶部横幅==========
 document.addEventListener('mouseover',function(e){
-    const cardDom = e.target.closest('.prof‑card');
+    const cardDom = e.target.closest('.prof-card');
     const bannerDom = document.getElementById('topBanner');
     if(cardDom){
         const name = cardDom.dataset.profname;
@@ -320,8 +320,8 @@ document.addEventListener('mouseover',function(e){
     }
 })
 document.addEventListener('mouseout',function(e){
-    const cardDom = e.target.closest('.prof‑card');
-    if(cardDom && !e.relatedTarget?.closest('.prof‑card')){
+    const cardDom = e.target.closest('.prof-card');
+    if(cardDom && !e.relatedTarget?.closest('.prof-card')){
         document.getElementById('topBanner').style.backgroundImage = defaultBannerImg;
     }
 })
