@@ -95,10 +95,13 @@ function loadData(){
   };
 }
 function saveData(d){
+  const cleanCareers = Array.isArray(d.careers)
+    ? d.careers.map(({ _visual, ...rest }) => rest)
+    : defaultData.careers;
   const next = {
     ...defaultData,
     ...d,
-    careers: Array.isArray(d.careers) ? d.careers : defaultData.careers,
+    careers: cleanCareers,
     cards: Array.isArray(d.cards) ? d.cards : defaultData.cards,
   };
   fs.writeFileSync(DATA_FILE, JSON.stringify(next,null,2),"utf8");

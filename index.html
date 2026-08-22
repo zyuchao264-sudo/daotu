@@ -577,7 +577,7 @@ function normalizeAppData(data){
 
 const careerVisuals = {
     hunter:{
-        image:"/新建文件夹/猎人.jpg",
+        image:"/assets/roles/hunter.jpg",
         role:"荒野追猎者",
         subtitle:"林地、追踪、兽伴与陷阱",
         summary:"穿行于荒野与林地的游猎者，擅长追踪、远程压制与环境陷阱，和猎犬配合时会形成很强的压迫感。",
@@ -594,7 +594,7 @@ const careerVisuals = {
         lv2bCost:"2木3肉"
     },
     merchant:{
-        image:"/新建文件夹/商人.png",
+        image:"/assets/roles/merchant.png",
         role:"资源操盘手",
         subtitle:"交易、金币、契约与市场",
         summary:"擅长以资源和契约改变局势的商人，能把金币、货物与关系网变成稳定收益。",
@@ -611,7 +611,7 @@ const careerVisuals = {
         lv2bCost:"2木3石"
     },
     gambler:{
-        image:"/新建文件夹/赌徒.png",
+        image:"/assets/roles/gambler.png",
         role:"命运博弈者",
         subtitle:"骰运、筹码、翻盘与赌局",
         summary:"把每一次出手都赌在概率上的赌徒，擅长以高风险动作换取爆发性收益。",
@@ -628,7 +628,7 @@ const careerVisuals = {
         lv2bCost:"2筹码3木"
     },
     paladin:{
-        image:"/新建文件夹/圣骑士.png",
+        image:"/assets/roles/paladin.png",
         role:"圣辉守护者",
         subtitle:"重甲、圣徽、守护与审判",
         summary:"披甲执剑的前线守护者，越是危急越能稳定战线，是队伍里最稳的正面核心。",
@@ -650,7 +650,7 @@ const careerVisuals = {
         lv3bEffect:"你本回合首次攻击命中后，可再对同一目标追加一次基础攻击。"
     },
     beggar:{
-        image:"/新建文件夹/乞丐.jpg",
+        image:"/assets/roles/beggar.jpg",
         role:"逆境生存者",
         subtitle:"乞讨、续命、低资源翻盘",
         summary:"在贫困和压迫中仍能坚持行动的角色，依靠生存能力与谈判能力寻找翻盘机会。",
@@ -672,7 +672,7 @@ const careerVisuals = {
         lv3bEffect:"消耗所有持有的资源，每回合回复两点生命，持续三回合。"
     },
     android:{
-        image:"/新建文件夹/人造人.png",
+        image:"/assets/roles/android.png",
         role:"机械适配体",
         subtitle:"齿轮、核心、强化与改造",
         summary:"由机械核心驱动的改造体，擅长适配装备、累积强化与把战斗能力稳定放大。",
@@ -694,7 +694,7 @@ const careerVisuals = {
         lv3bEffect:"当你受到致命伤害时，若有机械核心资源，则改为保留1点生命并重置一次改造。"
     },
     欺诈师:{
-        image:"/新建文件夹/欺诈师.png",
+        image:"/assets/roles/trickster.png",
         role:"伪装操盘手",
         subtitle:"面具、骗局、心理战与假情报",
         summary:"在谎言、伪装和信息差中运作的角色，擅长偷换目标、误导对手并制造局势反转。",
@@ -985,7 +985,7 @@ function renderCareerList(){
         div.className="panel career-card";
         div.innerHTML=`
         <div class="career-portrait">
-            <img src="${profile.image}" alt="${c.name}">
+            <img src="${profile.image}" alt="${c.name}" loading="lazy" onerror="this.onerror=null;this.style.display='none';this.parentElement.style.background='linear-gradient(180deg,#f5e7c5,#dcc28c)'">
             <div class="career-rank">${profile.rank||"1"}</div>
         </div>
         <div class="career-body">
