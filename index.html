@@ -99,6 +99,129 @@ button:active{transform:translateY(1px);}
     margin-bottom:12px;
     box-shadow:0 10px 24px rgba(78,55,24,.06);
 }
+.career-card{
+    width:360px;
+    display:flex;
+    flex-direction:column;
+    gap:12px;
+    overflow:hidden;
+    position:relative;
+}
+.career-portrait{
+    position:relative;
+    width:100%;
+    aspect-ratio: 3 / 4;
+    border-radius:16px;
+    overflow:hidden;
+    background:linear-gradient(180deg, #f5e7c5, #e2c995);
+    border:1px solid rgba(181,140,72,.55);
+    box-shadow:inset 0 0 0 1px rgba(255,255,255,.35);
+}
+.career-portrait img{
+    width:100%;
+    height:100%;
+    object-fit:cover;
+    display:block;
+}
+.career-portrait::after{
+    content:"";
+    position:absolute;
+    inset:0;
+    background:linear-gradient(180deg, rgba(255,255,255,.03) 0%, rgba(72,46,15,.02) 55%, rgba(31,18,8,.16) 100%);
+    pointer-events:none;
+}
+.career-rank{
+    position:absolute;
+    left:12px;
+    top:12px;
+    width:34px;
+    height:34px;
+    border-radius:50%;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    background:linear-gradient(180deg, #ead08f, #bf8d3e);
+    border:1px solid #8e652d;
+    color:#5e4016;
+    font-weight:700;
+    z-index:1;
+    box-shadow:0 8px 16px rgba(101,72,24,.18);
+}
+.career-body{display:flex;flex-direction:column;gap:10px;}
+.career-head{display:flex;justify-content:space-between;gap:10px;align-items:flex-start;}
+.career-head h4{margin:0;font-size:22px;}
+.career-subtitle{color:var(--brand-strong);font-size:13px;font-weight:700;letter-spacing:.2px;margin-top:4px;}
+.career-rolechip{
+    flex:0 0 auto;
+    padding:6px 10px;
+    border-radius:999px;
+    background:#f0dfbd;
+    color:#6a4b1d;
+    border:1px solid #c9a968;
+    font-size:12px;
+    font-weight:700;
+}
+.career-summary{
+    padding:10px 12px;
+    border-radius:14px;
+    background:rgba(255,255,255,.7);
+    border:1px solid rgba(215,198,168,.7);
+    color:#56493a;
+    line-height:1.65;
+    font-size:13px;
+}
+.career-chips{
+    display:flex;
+    flex-wrap:wrap;
+    gap:8px;
+}
+.career-chip{
+    padding:5px 9px;
+    border-radius:999px;
+    background:#fff6df;
+    color:#7b5a2d;
+    border:1px solid rgba(176,131,63,.35);
+    font-size:12px;
+}
+.career-facts{
+    display:grid;
+    grid-template-columns:repeat(3,minmax(0,1fr));
+    gap:8px;
+}
+.career-facts .fact{
+    padding:8px 9px;
+    border-radius:12px;
+    background:#fff7ea;
+    border:1px solid rgba(205,179,134,.7);
+}
+.career-facts .fact b{
+    display:block;
+    font-size:11px;
+    color:#8a6a3c;
+    margin-bottom:4px;
+}
+.career-facts .fact span{
+    display:block;
+    font-size:12px;
+    line-height:1.45;
+}
+.career-details{
+    border-top:1px solid rgba(181,140,72,.2);
+    padding-top:2px;
+}
+.career-details summary{
+    cursor:pointer;
+    list-style:none;
+    font-weight:700;
+    color:var(--brand-strong);
+    padding:6px 0;
+}
+.career-details summary::-webkit-details-marker{display:none;}
+.career-details .tree-node{font-size:12px;line-height:1.55;margin:6px 0;padding:8px 10px;}
+.career-action{
+    width:100%;
+    margin-top:2px;
+}
 .section-title{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px;}
 .section-title h3,.section-title h4{margin:0;}
 .section-title small{color:var(--muted);}
@@ -257,6 +380,8 @@ small{color:var(--muted);}
     .hero-title h2{font-size:22px;}
     .hex-grid{max-width:none;}
     .tabs{top:6px;padding:8px;}
+    .career-card{width:100%;}
+    .career-facts{grid-template-columns:1fr;}
 }
 </style>
 <script src="/socket.io/socket.io.js"></script>
@@ -445,9 +570,174 @@ function normalizeAppData(data){
         ...base,
         announcement: typeof base.announcement === "string" ? base.announcement : "欢迎来到道途协作工作台，公告栏可以在这里发布当日说明。",
         mapNote: typeof base.mapNote === "string" ? base.mapNote : "六边形地图示意区：这里先作为地图模块占位，后续可扩展成真正的地块编辑。",
-        careers: Array.isArray(base.careers) ? base.careers : [],
+        careers: Array.isArray(base.careers) ? base.careers.map(hydrateCareer) : [],
         cards: Array.isArray(base.cards) ? base.cards : [],
     };
+}
+
+const careerVisuals = {
+    hunter:{
+        image:"/新建文件夹/猎人.jpg",
+        role:"荒野追猎者",
+        subtitle:"林地、追踪、兽伴与陷阱",
+        summary:"穿行于荒野与林地的游猎者，擅长追踪、远程压制与环境陷阱，和猎犬配合时会形成很强的压迫感。",
+        keywords:["远程压制","追踪狩猎","兽伴协同"],
+        rank:"2",
+        profile:"猎人公会的王牌射手，靠精准与耐性在野外收割局势。",
+        buildingDesc:"猎人公会擅长产出猎人标记，帮助你在战斗、追猎与伏击中持续建立优势。",
+        passive0:"忠诚的伙伴：猎人开局自带特殊装备猎狗，部分卡牌可让猎人从兽伴身上获得额外收益。",
+        lv2aName:"丛林之主",
+        lv2aEffect:"困难地形的移动消耗减1，并且不会受到困难地形造成的伤害。",
+        lv2aCost:"2木3肉",
+        lv2bName:"鹰眼",
+        lv2bEffect:"攻击距离加1，一回合只能进行一次基础攻击。",
+        lv2bCost:"2木3肉"
+    },
+    merchant:{
+        image:"/新建文件夹/商人.png",
+        role:"资源操盘手",
+        subtitle:"交易、金币、契约与市场",
+        summary:"擅长以资源和契约改变局势的商人，能把金币、货物与关系网变成稳定收益。",
+        keywords:["资源流转","交易压制","金币收益"],
+        rank:"2",
+        profile:"商会的主人，精于算账，也擅长用财富迫使对手让步。",
+        buildingDesc:"商会会稳定产出铜币和交易资源，适合围绕收益、结算和压价建立战术。",
+        passive0:"重商轻武：商人基础攻击为0，但能在更灵活的位置进行建造与经营。",
+        lv2aName:"商会大亨",
+        lv2aEffect:"商会的默认产出加1。",
+        lv2aCost:"2木3石",
+        lv2bName:"拿钱砸人",
+        lv2bEffect:"商人的基础攻击替换为：消耗2铜币对3格范围内的一名玩家造成1点伤害。",
+        lv2bCost:"2木3石"
+    },
+    gambler:{
+        image:"/新建文件夹/赌徒.png",
+        role:"命运博弈者",
+        subtitle:"骰运、筹码、翻盘与赌局",
+        summary:"把每一次出手都赌在概率上的赌徒，擅长以高风险动作换取爆发性收益。",
+        keywords:["骰运翻盘","筹码运作","高风险回报"],
+        rank:"2",
+        profile:"赌局中心的人，越是绝境，越敢把筹码全部推上桌。",
+        buildingDesc:"赌场会把随机性转化成筹码优势，适合搭配重投、判定与概率收益的卡牌。",
+        passive0:"好赌之人：每次投掷骰子时，可以进行一次重投（一回合一次）。",
+        lv2aName:"赌瘾犯了",
+        lv2aEffect:"天赋好赌之人改为一回合2次。",
+        lv2aCost:"2木3石",
+        lv2bName:"赌命",
+        lv2bEffect:"指定2格范围内的一名玩家，双方各自选择不同结果进行对赌，胜者对败者造成2点伤害。",
+        lv2bCost:"2筹码3木"
+    },
+    paladin:{
+        image:"/新建文件夹/圣骑士.png",
+        role:"圣辉守护者",
+        subtitle:"重甲、圣徽、守护与审判",
+        summary:"披甲执剑的前线守护者，越是危急越能稳定战线，是队伍里最稳的正面核心。",
+        keywords:["重甲防线","圣光守护","正面压制"],
+        rank:"2",
+        profile:"以誓言与圣光维持阵线的骑士，能在关键回合替队伍稳住局面。",
+        buildingDesc:"圣殿以防护与治疗为主，适合制造护盾、净化与正面增益。",
+        passive0:"圣辉誓约：当你首次受到伤害时，若你装备护具，则本次伤害-1。",
+        lv2aName:"圣光壁垒",
+        lv2aEffect:"回合内首次防御成功后，额外获得1点护盾。",
+        lv2aCost:"2木3石",
+        lv2bName:"审判冲锋",
+        lv2bEffect:"向前发起一次强化攻击，若目标持有负面状态则伤害+1。",
+        lv2bCost:"2木3石",
+        lv3Cost:"4金",
+        lv3aName:"圣殿领主",
+        lv3aEffect:"圣殿默认产出提升，且你可以为一名友方分担1点伤害。",
+        lv3bName:"炽誓裁决",
+        lv3bEffect:"你本回合首次攻击命中后，可再对同一目标追加一次基础攻击。"
+    },
+    beggar:{
+        image:"/新建文件夹/乞丐.jpg",
+        role:"逆境生存者",
+        subtitle:"乞讨、续命、低资源翻盘",
+        summary:"在贫困和压迫中仍能坚持行动的角色，依靠生存能力与谈判能力寻找翻盘机会。",
+        keywords:["逆境生存","乞讨结算","资源交换"],
+        rank:"2",
+        profile:"看似落魄，实则最懂得如何在绝境里活下来。",
+        buildingDesc:"乞讨棚偏向恢复与交换，能把一点点资源和生命价值放大成持续生存力。",
+        passive0:"消极虚无主义：你的所有行动都需要消耗生命进行，三级天赋额外消耗1点生命。",
+        lv2aName:"沿街乞讨",
+        lv2aEffect:"指定资源最多的玩家进行判定，若你命中指定数字，则对方必须给你2单位任意资源。",
+        lv2aCost:"1生命",
+        lv2bName:"听天由命",
+        lv2bEffect:"你投出一枚1-6的骰子，失去与点数相同的资源，再投出一枚1-6的骰子，回复与点数相同的生命。",
+        lv2bCost:"1生命",
+        lv3Cost:"4金",
+        lv3aName:"宴会闹事",
+        lv3aEffect:"以资源持有最多的玩家为中心，周围三格内的每位玩家需要对你支付2单位任意资源。",
+        lv3bName:"野外生存法",
+        lv3bEffect:"消耗所有持有的资源，每回合回复两点生命，持续三回合。"
+    },
+    android:{
+        image:"/新建文件夹/人造人.png",
+        role:"机械适配体",
+        subtitle:"齿轮、核心、强化与改造",
+        summary:"由机械核心驱动的改造体，擅长适配装备、累积强化与把战斗能力稳定放大。",
+        keywords:["机械强化","模块适配","核心驱动"],
+        rank:"3",
+        profile:"不断改装自身的半机械存在，战斗方式冷静而高效。",
+        buildingDesc:"维修站负责修理、重构与零件补给，偏向中后期的强化路线。",
+        passive0:"模块适配：你装备的第一件基础装备额外获得1点效果增幅。",
+        lv2aName:"核心过载",
+        lv2aEffect:"本回合你下一张强化类卡牌效果+1。",
+        lv2aCost:"2木3石",
+        lv2bName:"机械修正",
+        lv2bEffect:"你可以重置一次本回合的装备判定或改造结果。",
+        lv2bCost:"2木3石",
+        lv3Cost:"4金",
+        lv3aName:"超频重构",
+        lv3aEffect:"你的装备位可以额外忽略1项限制，并且你每回合第一次装备/替换装备不消耗行动。",
+        lv3bName:"终端觉醒",
+        lv3bEffect:"当你受到致命伤害时，若有机械核心资源，则改为保留1点生命并重置一次改造。"
+    },
+    欺诈师:{
+        image:"/新建文件夹/欺诈师.png",
+        role:"伪装操盘手",
+        subtitle:"面具、骗局、心理战与假情报",
+        summary:"在谎言、伪装和信息差中运作的角色，擅长偷换目标、误导对手并制造局势反转。",
+        keywords:["伪装身份","信息误导","心理压制"],
+        rank:"2",
+        profile:"戴着面具的操盘者，擅长把对手带进自己设计的局里。",
+        buildingDesc:"骗术工坊会产出欺诈币，围绕偷看、交换、弃牌和误导形成完整玩法。",
+        passive0:"骗术嗅觉：每当你成功触发一次欺诈效果时，获得1枚欺诈币。",
+        lv2aName:"骗术学徒",
+        lv2aEffect:"你的欺诈效果额外为你提供1枚欺诈币。",
+        lv2aCost:"2木3肉",
+        lv2bName:"心理战",
+        lv2bEffect:"每回合一次，你查看对手手牌或交换手牌后，可以选择给自己抽1张牌或让对方随机弃1张。",
+        lv2bCost:"2木3肉"
+    }
+};
+
+function getCareerVisual(career){
+    return careerVisuals[career.id] || careerVisuals[career.name] || {
+        image:"",
+        role:"职业设定",
+        subtitle:"补充中",
+        summary:"该职业的视觉与设定信息正在整理中。",
+        keywords:["待补全"],
+        rank:"1",
+        profile:"",
+    };
+}
+
+function hydrateCareer(career){
+    const profile = getCareerVisual(career);
+    const out = {...career};
+    if(!out.buildingName || out.buildingName==="待填写") out.buildingName = career.buildingName || out.buildingName || "未命名建筑";
+    if(!out.buildingDesc || out.buildingDesc==="待填写") out.buildingDesc = profile.buildingDesc || out.buildingDesc || "";
+    if(!out.passive0 || out.passive0==="待填写") out.passive0 = profile.passive0 || out.passive0 || "";
+    if(!out.lv2aName) out.lv2aName = profile.lv2aName || "";
+    if(!out.lv2aEffect) out.lv2aEffect = profile.lv2aEffect || "";
+    if(!out.lv2aCost) out.lv2aCost = profile.lv2aCost || "";
+    if(!out.lv2bName) out.lv2bName = profile.lv2bName || "";
+    if(!out.lv2bEffect) out.lv2bEffect = profile.lv2bEffect || "";
+    if(!out.lv2bCost) out.lv2bCost = profile.lv2bCost || "";
+    out._visual = profile;
+    return out;
 }
 
 socket.on("connect",()=>{
@@ -556,11 +846,12 @@ document.getElementById("saveCareer").onclick=()=>{
         lv3bEffect:document.getElementById("cLv3bEffect").value.trim(),
     }
     if(!career.name){alert("职业名称不能为空");return;}
+    const finalCareer = hydrateCareer(career);
     if(editId){
         const idx = appData.careers.findIndex(x=>x.id===editId);
-        appData.careers[idx]=career;
+        appData.careers[idx]=finalCareer;
     }else{
-        appData.careers.push(career);
+        appData.careers.push(finalCareer);
     }
     pushCloud();
     document.getElementById("modalCareer").classList.add("hidden");
@@ -655,7 +946,7 @@ document.getElementById("importFile").onchange=async (e)=>{
     const txt = await f.text();
     const imp = JSON.parse(txt);
     if(!confirm("导入会覆盖当前全部数据，确认？")) return;
-    appData = imp;
+    appData = normalizeAppData(imp);
     pushCloud();
     renderAll();
 }
@@ -689,20 +980,44 @@ function renderCareerList(){
     const wrap = document.getElementById("careerWrap");
     wrap.innerHTML="";
     appData.careers.forEach(c=>{
+        const profile = c._visual || getCareerVisual(c);
         const div = document.createElement("div");
-        div.className="panel";
-        div.style.width="340px";
+        div.className="panel career-card";
         div.innerHTML=`
-        <h4>${c.name}</h4>
-        <p>血量：${c.hp}｜装备位：${c.equipSlot}</p>
-        <p><small>专属建筑：${c.buildingName}</small><br><small>${c.buildingDesc}</small></p>
-        <div class="tree-node"><b>初始被动</b><br>${c.passive0||"未填写"}</div>
-        <div class="tree-node"><b>2级天赋A【${c.lv2aName||"未命名"}】消耗：${c.lv2aCost||"-"}</b><br>${c.lv2aEffect||"无效果"}</div>
-        <div class="tree-node"><b>2级天赋B【${c.lv2bName||"未命名"}】消耗：${c.lv2bCost||"-"}</b><br>${c.lv2bEffect||"无效果"}</div>
-        <div class="tree-node"><b>3级统一消耗：${c.lv3Cost||"-"}</b></div>
-        <div class="tree-node"><b>3级天赋A【${c.lv3aName||"未命名"}】</b><br>${c.lv3aEffect||"无效果"}</div>
-        <div class="tree-node"><b>3级天赋B【${c.lv3bName||"未命名"}】</b><br>${c.lv3bEffect||"无效果"}</div>
-        <button class="secondary">编辑职业</button>
+        <div class="career-portrait">
+            <img src="${profile.image}" alt="${c.name}">
+            <div class="career-rank">${profile.rank||"1"}</div>
+        </div>
+        <div class="career-body">
+            <div class="career-head">
+                <div>
+                    <h4>${c.name}</h4>
+                    <div class="career-subtitle">${profile.subtitle||""}</div>
+                </div>
+                <div class="career-rolechip">${profile.role||"职业"}</div>
+            </div>
+            <div class="career-summary">${profile.summary||"暂无简介"}</div>
+            <div class="career-chips">
+                ${(profile.keywords||[]).map(k=>`<span class="career-chip">${k}</span>`).join("")}
+            </div>
+            <div class="career-facts">
+                <div class="fact"><b>血量</b><span>${c.hp}</span></div>
+                <div class="fact"><b>装备位</b><span>${c.equipSlot}</span></div>
+                <div class="fact"><b>建筑</b><span>${c.buildingName||"未填写"}</span></div>
+            </div>
+            <details class="career-details">
+                <summary>完整设定</summary>
+                <div class="tree-node"><b>职业简介</b><br>${profile.profile||profile.summary||"未填写"}</div>
+                <div class="tree-node"><b>专属建筑</b><br>${c.buildingName||"未填写"}<br>${c.buildingDesc||"未填写"}</div>
+                <div class="tree-node"><b>初始被动</b><br>${c.passive0||"未填写"}</div>
+                <div class="tree-node"><b>2级天赋A【${c.lv2aName||"未命名"}】消耗：${c.lv2aCost||"-"}</b><br>${c.lv2aEffect||"无效果"}</div>
+                <div class="tree-node"><b>2级天赋B【${c.lv2bName||"未命名"}】消耗：${c.lv2bCost||"-"}</b><br>${c.lv2bEffect||"无效果"}</div>
+                <div class="tree-node"><b>3级统一消耗：${c.lv3Cost||"-"}</b></div>
+                <div class="tree-node"><b>3级天赋A【${c.lv3aName||"未命名"}】</b><br>${c.lv3aEffect||"无效果"}</div>
+                <div class="tree-node"><b>3级天赋B【${c.lv3bName||"未命名"}】</b><br>${c.lv3bEffect||"无效果"}</div>
+            </details>
+            <button class="secondary career-action">编辑职业</button>
+        </div>
         `;
         div.querySelector("button").onclick=()=>openCareerModal(c);
         wrap.appendChild(div);
