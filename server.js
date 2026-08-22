@@ -14,6 +14,8 @@ const DATA_FILE = path.join(__dirname, "data.json");
 
 // 初始化默认数据
 const defaultData = {
+  announcement:"欢迎来到道途协作工作台，公告栏可以在这里发布当日说明。",
+  mapNote:"六边形地图示意区：这里先作为地图模块占位，后续可扩展成真正的地块编辑。",
   careers:[
     {
       id:"hunter",name:"猎人",hp:8,equipSlot:"1武器1护具1鞋1道具1宠物",
@@ -84,10 +86,22 @@ if (!fs.existsSync(DATA_FILE)) {
 }
 
 function loadData(){
-  return JSON.parse(fs.readFileSync(DATA_FILE,"utf8"));
+  const data = JSON.parse(fs.readFileSync(DATA_FILE,"utf8"));
+  return {
+    ...defaultData,
+    ...data,
+    careers: Array.isArray(data.careers) ? data.careers : defaultData.careers,
+    cards: Array.isArray(data.cards) ? data.cards : defaultData.cards,
+  };
 }
 function saveData(d){
-  fs.writeFileSync(DATA_FILE, JSON.stringify(d,null,2),"utf8");
+  const next = {
+    ...defaultData,
+    ...d,
+    careers: Array.isArray(d.careers) ? d.careers : defaultData.careers,
+    cards: Array.isArray(d.cards) ? d.cards : defaultData.cards,
+  };
+  fs.writeFileSync(DATA_FILE, JSON.stringify(next,null,2),"utf8");
 }
 
 app.use(express.static(__dirname));

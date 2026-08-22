@@ -6,42 +6,337 @@
 <title>道途｜卡牌&职业协作工作台</title>
 <style>
 *{box-sizing:border-box;font-family:"Microsoft Yahei",sans-serif;}
-body{background:#f3ede0;margin:0;padding:12px;color:#222;}
-.container{max-width:1400px;margin:0 auto;}
+:root{
+    --bg:#f4efe6;
+    --bg-accent:#ebe2d1;
+    --panel:#fffaf1;
+    --panel-strong:#fff4df;
+    --border:#d8c6a7;
+    --text:#26221b;
+    --muted:#6a6155;
+    --brand:#7b5430;
+    --brand-strong:#5a3b20;
+    --brand-soft:#f2e0c6;
+    --success:#2f7a46;
+    --danger:#a24a3b;
+    --shadow:0 18px 45px rgba(52,38,19,.10);
+}
+body{
+    margin:0;
+    color:var(--text);
+    background:
+        radial-gradient(circle at top left, rgba(255,255,255,.7), transparent 34%),
+        radial-gradient(circle at right top, rgba(215,178,118,.18), transparent 22%),
+        linear-gradient(180deg, #f8f4ec 0%, var(--bg) 100%);
+}
+.container{max-width:1440px;margin:0 auto;padding:14px;}
+.shell{
+    background:rgba(255,255,255,.38);
+    border:1px solid rgba(215,198,168,.75);
+    border-radius:24px;
+    box-shadow:var(--shadow);
+    padding:14px;
+    backdrop-filter:blur(8px);
+}
+.hero{
+    display:grid;
+    grid-template-columns:minmax(0,1.5fr) minmax(280px,.85fr);
+    gap:14px;
+    align-items:stretch;
+    margin-bottom:10px;
+}
+.hero-card{
+    background:linear-gradient(135deg, rgba(255,250,242,.96), rgba(245,234,215,.95));
+    border:1px solid rgba(215,198,168,.9);
+    border-radius:20px;
+    padding:14px;
+    box-shadow:var(--shadow);
+}
+.hero-title{
+    display:flex;
+    justify-content:space-between;
+    gap:12px;
+    align-items:flex-start;
+    flex-wrap:wrap;
+}
+.hero-title h2{margin:0;font-size:28px;letter-spacing:.5px;}
+.hero-title p{margin:6px 0 0;color:var(--muted);}
+.info-bar{font-size:13px;color:var(--muted);background:rgba(255,255,255,.75);padding:8px 12px;border-radius:999px;border:1px solid rgba(215,198,168,.85);}
+.metric-row{display:flex;gap:10px;flex-wrap:wrap;margin-top:12px;}
+.metric{
+    min-width:120px;
+    padding:10px 12px;
+    border-radius:14px;
+    background:rgba(255,255,255,.72);
+    border:1px solid rgba(215,198,168,.75);
+}
+.metric strong{display:block;font-size:20px;line-height:1.1;}
+.metric span{font-size:12px;color:var(--muted);}
 .top-bar{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:12px;}
-button{padding:6px 12px;border:none;border-radius:4px;background:#6b4c28;color:#fff;cursor:pointer;}
-button.secondary{background:#888;}
-button.success{background:#2b7036;}
-.panel{background:#fff8e8;border:1px solid #c9b89c;padding:14px;border-radius:6px;margin-bottom:10px;}
-.flex-row{display:flex;gap:12px;flex-wrap:wrap;}
-.card-item{width:180px;background:#fff9e9;border:1px solid #b8a584;padding:8px;border-radius:4px;cursor:pointer;}
-.tabs{display:flex;gap:6px;margin-bottom:10px;}
-.tab{padding:6px 10px;background:#ddd;cursor:pointer;border-radius:4px;}
-.tab.active{background:#6b4c28;color:white;}
-.modal{position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.4);display:flex;align-items:center;justify-content:center;z-index:99;}
-.modal-content{background:#fff8e8;padding:16px;border-radius:6px;width:min(95%,720px);max-height:85vh;overflow:auto;}
+button{
+    padding:9px 14px;
+    border:none;
+    border-radius:12px;
+    background:linear-gradient(180deg, var(--brand), var(--brand-strong));
+    color:#fff;
+    cursor:pointer;
+    box-shadow:0 10px 18px rgba(123,84,48,.16);
+}
+button.secondary{background:#8f8a82;}
+button.success{background:linear-gradient(180deg, var(--success), #236136);}
+button.ghost{
+    background:transparent;
+    color:var(--brand-strong);
+    border:1px solid rgba(123,84,48,.25);
+    box-shadow:none;
+}
+button:active{transform:translateY(1px);}
+.panel{
+    background:linear-gradient(180deg, rgba(255,251,244,.96), rgba(255,245,226,.94));
+    border:1px solid var(--border);
+    padding:14px;
+    border-radius:18px;
+    margin-bottom:12px;
+    box-shadow:0 10px 24px rgba(78,55,24,.06);
+}
+.section-title{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px;}
+.section-title h3,.section-title h4{margin:0;}
+.section-title small{color:var(--muted);}
+.dashboard{
+    display:grid;
+    grid-template-columns:1.15fr .85fr;
+    gap:14px;
+    margin-bottom:10px;
+}
+.dashboard-card{
+    background:linear-gradient(180deg, rgba(255,252,247,.98), rgba(247,236,214,.96));
+    border:1px solid rgba(215,198,168,.95);
+    border-radius:22px;
+    padding:14px;
+    box-shadow:var(--shadow);
+}
+.dashboard-card h3{margin:0 0 8px;font-size:18px;}
+.dashboard-card p{margin:0 0 8px;color:var(--muted);line-height:1.5;font-size:13px;}
+.dashboard-card textarea,.dashboard-card input{margin-top:0;}
+.map-wrap{
+    display:grid;
+    grid-template-columns:1fr auto;
+    gap:14px;
+    align-items:start;
+}
+.hex-scene{
+    padding:12px;
+    border-radius:18px;
+    background:
+        linear-gradient(180deg, rgba(255,255,255,.55), rgba(255,248,236,.9)),
+        repeating-linear-gradient(0deg, rgba(123,84,48,.05) 0 1px, transparent 1px 22px);
+    border:1px dashed rgba(123,84,48,.24);
+    min-height:190px;
+}
+.hex-grid{
+    display:grid;
+    grid-template-columns:repeat(3, 1fr);
+    gap:10px;
+    max-width:360px;
+    margin:0 auto;
+}
+.hex-grid .row-offset{margin-top:26px;}
+.hex{
+    aspect-ratio:1 / 1.1;
+    clip-path:polygon(25% 6%, 75% 6%, 100% 50%, 75% 94%, 25% 94%, 0 50%);
+    background:linear-gradient(180deg, #d8c09a, #b89461);
+    border:1px solid rgba(92,66,34,.28);
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    color:#fff9ef;
+    font-weight:700;
+    text-shadow:0 1px 0 rgba(0,0,0,.15);
+    box-shadow:0 10px 24px rgba(96,69,32,.14);
+}
+.hex.alt{background:linear-gradient(180deg, #e5d4b5, #c79f6f);}
+.hex.note{
+    background:linear-gradient(180deg, #7f5a36, #5f4026);
+}
+.map-note{
+    min-width:240px;
+    max-width:300px;
+}
+.tabs{
+    display:flex;
+    gap:8px;
+    margin-bottom:12px;
+    flex-wrap:wrap;
+    position:sticky;
+    top:10px;
+    z-index:20;
+    padding:8px 10px;
+    border-radius:16px;
+    background:rgba(250,245,236,.82);
+    backdrop-filter:blur(8px);
+    border:1px solid rgba(215,198,168,.72);
+}
+.tab{
+    padding:9px 14px;
+    background:rgba(255,255,255,.7);
+    cursor:pointer;
+    border-radius:999px;
+    border:1px solid rgba(215,198,168,.9);
+    color:var(--muted);
+}
+.tab.active{
+    background:linear-gradient(180deg, var(--brand), var(--brand-strong));
+    color:white;
+    border-color:transparent;
+}
+.modal{
+    position:fixed;
+    top:0;left:0;
+    width:100%;height:100%;
+    background:rgba(20,14,9,.44);
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    z-index:99;
+    padding:18px;
+}
+.modal-content{
+    background:linear-gradient(180deg, #fffaf1, #f8eed9);
+    padding:18px;
+    border-radius:20px;
+    width:min(96%,760px);
+    max-height:88vh;
+    overflow:auto;
+    border:1px solid rgba(215,198,168,.95);
+    box-shadow:var(--shadow);
+}
 .hidden{display:none !important;}
-input,textarea,select{width:100%;padding:6px;margin:4px 0;border:1px solid #aaa;border-radius:3px;}
-textarea{min-height:70px;}
-.tree-node{margin:4px 0;padding:6px;border-left:3px solid #8c6b3e;background:#fff3dd;}
-small{color:#555;}
-.info-bar{font-size:13px;color:#444;}
+input,textarea,select{
+    width:100%;
+    padding:10px 12px;
+    margin:6px 0 10px;
+    border:1px solid #cdb999;
+    border-radius:12px;
+    background:rgba(255,255,255,.9);
+    color:var(--text);
+}
+textarea{min-height:96px;resize:vertical;}
+.tree-node{
+    margin:8px 0;
+    padding:10px 12px;
+    border-left:4px solid #8c6b3e;
+    background:#fff4e0;
+    border-radius:10px;
+}
+small{color:var(--muted);}
+.flex-row{display:flex;gap:12px;flex-wrap:wrap;}
+.card-item{
+    width:220px;
+    background:linear-gradient(180deg, #fff9ef, #f7ebd6);
+    border:1px solid #c9b28b;
+    padding:12px;
+    border-radius:16px;
+    cursor:pointer;
+    box-shadow:0 10px 22px rgba(82,58,28,.06);
+}
+.card-item b{font-size:15px;}
+.grid-2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;}
+.muted-card{
+    background:rgba(255,255,255,.55);
+    border:1px dashed rgba(123,84,48,.18);
+    border-radius:16px;
+    padding:12px;
+}
+@media (max-width: 1100px){
+    .hero,.dashboard,.map-wrap,.grid-2{grid-template-columns:1fr;}
+    .map-note{min-width:0;max-width:none;}
+}
+@media (max-width: 720px){
+    .container{padding:10px;}
+    .shell{padding:12px;border-radius:18px;}
+    .hero-title h2{font-size:22px;}
+    .hex-grid{max-width:none;}
+    .tabs{top:6px;padding:8px;}
+}
 </style>
 <script src="/socket.io/socket.io.js"></script>
 </head>
 <body>
 <div class="container">
-<div class="top-bar">
-    <h2>道途桌游｜卡牌&职业协作工作台</h2>
-    <span class="info-bar" id="syncStatus">🟡连接中…</span>
+<div class="shell">
+<div class="hero">
+    <div class="hero-card">
+        <div class="hero-title">
+            <div>
+                <h2>道途桌游｜卡牌&职业协作工作台</h2>
+                <p>把公告、地图示意和卡牌管理放在一个页面里，方便多人协同编辑。</p>
+            </div>
+            <span class="info-bar" id="syncStatus">🟡连接中…</span>
+        </div>
+        <div class="metric-row">
+            <div class="metric"><strong id="metricCareer">0</strong><span>职业数量</span></div>
+            <div class="metric"><strong id="metricCard">0</strong><span>卡牌数量</span></div>
+            <div class="metric"><strong id="metricAnnouncement">0</strong><span>公告字数</span></div>
+            <div class="metric"><strong id="metricMap">0</strong><span>地图备注字数</span></div>
+        </div>
+    </div>
+    <div class="hero-card">
+        <div class="section-title">
+            <h3>快捷操作</h3>
+            <small>常用入口</small>
+        </div>
+        <div class="top-bar">
+            <button id="btnAddCareer" class="success">➕新增职业</button>
+            <button id="btnNewCard">🃏新建卡牌</button>
+            <button id="btnExport">📤导出JSON备份</button>
+            <button id="btnImport">📥导入JSON</button>
+            <input type="file" id="importFile" accept=".json" class="hidden">
+        </div>
+        <div class="muted-card">
+            <small>提示：公告和地图备注都会跟随当前数据一起保存到云端。</small>
+        </div>
+    </div>
 </div>
-<div class="top-bar">
-    <button id="btnAddCareer" class="success">➕新增职业</button>
-    <button id="btnNewCard">🃏新建卡牌</button>
-    <button id="btnExport">📤导出JSON备份</button>
-    <button id="btnImport">📥导入JSON</button>
-    <input type="file" id="importFile" accept=".json" class="hidden">
+
+<div class="dashboard">
+    <div class="dashboard-card">
+        <div class="section-title">
+            <div>
+                <h3>公告栏</h3>
+                <small>可编辑并保存的公共通知区</small>
+            </div>
+            <button id="saveAnnouncement" class="success">保存公告</button>
+        </div>
+        <p>这里可以写当前版本说明、测试提醒、协作须知，保存后会同步给所有打开页面的人。</p>
+        <textarea id="announcementText" placeholder="请输入公告内容"></textarea>
+    </div>
+    <div class="dashboard-card">
+        <div class="section-title">
+            <div>
+                <h3>地图模块</h3>
+                <small>先放六边形地块示例，后续可继续扩展</small>
+            </div>
+            <button id="saveMapNote" class="ghost">保存备注</button>
+        </div>
+        <div class="map-wrap">
+            <div class="hex-scene">
+                <div class="hex-grid">
+                    <div class="hex">A1</div>
+                    <div class="hex alt">A2</div>
+                    <div class="hex">A3</div>
+                    <div class="hex alt row-offset">B1</div>
+                    <div class="hex note row-offset">中心</div>
+                    <div class="hex alt row-offset">B3</div>
+                </div>
+            </div>
+            <div class="map-note">
+                <label>地图备注 / 文字说明</label>
+                <textarea id="mapNoteText" placeholder="例如：这里可以填写地图规则、地块说明、区域名字、坐标提示等"></textarea>
+            </div>
+        </div>
+    </div>
 </div>
+
 <div class="tabs">
     <div class="tab active" data-view="careerList">职业列表</div>
     <div class="tab" data-view="cardLib">卡牌库</div>
@@ -54,8 +349,17 @@ small{color:#555;}
 
 <div id="view-cardLib" class="view hidden">
     <div class="panel">
-        <select id="filterCareer"><option value="">全部职业</option></select>
-        <select id="filterType"><option value="">全部卡牌类型</option><option>行动卡</option><option>武器</option><option>护具</option><option>鞋</option><option>道具</option><option>宠物</option></select>
+        <div class="grid-2">
+            <div>
+                <label>职业筛选</label>
+                <select id="filterCareer"><option value="">全部职业</option></select>
+            </div>
+            <div>
+                <label>类型筛选</label>
+                <select id="filterType"><option value="">全部卡牌类型</option><option>行动卡</option><option>武器</option><option>护具</option><option>鞋</option><option>道具</option><option>宠物</option></select>
+            </div>
+        </div>
+        <label>搜索卡牌名称</label>
         <input placeholder="搜索卡牌名称" id="searchCard">
     </div>
     <div id="cardWrap" class="flex-row"></div>
@@ -135,6 +439,17 @@ small{color:#555;}
 let socket = io();
 let appData = null;
 
+function normalizeAppData(data){
+    const base = data || {};
+    return {
+        ...base,
+        announcement: typeof base.announcement === "string" ? base.announcement : "欢迎来到道途协作工作台，公告栏可以在这里发布当日说明。",
+        mapNote: typeof base.mapNote === "string" ? base.mapNote : "六边形地图示意区：这里先作为地图模块占位，后续可扩展成真正的地块编辑。",
+        careers: Array.isArray(base.careers) ? base.careers : [],
+        cards: Array.isArray(base.cards) ? base.cards : [],
+    };
+}
+
 socket.on("connect",()=>{
     document.getElementById("syncStatus").innerText="🟢已连接云端，多人协同模式";
 })
@@ -142,12 +457,26 @@ socket.on("disconnect",()=>{
     document.getElementById("syncStatus").innerText="🔴断开连接";
 })
 socket.on("fullData",(remoteData)=>{
-    appData = remoteData;
+    appData = normalizeAppData(remoteData);
     renderAll();
 })
 
 function pushCloud(){
     socket.emit("updateAll",appData);
+}
+
+function saveAnnouncementText(){
+    if(!appData) return;
+    appData.announcement = document.getElementById("announcementText").value;
+    pushCloud();
+    renderStatsOnly();
+}
+
+function saveMapNoteText(){
+    if(!appData) return;
+    appData.mapNote = document.getElementById("mapNoteText").value;
+    pushCloud();
+    renderStatsOnly();
 }
 
 // tab切换
@@ -166,6 +495,8 @@ document.querySelectorAll(".tab").forEach(t=>{
 document.getElementById("btnAddCareer").onclick=()=>openCareerModal(null);
 document.getElementById("closeCareerModal").onclick=()=>document.getElementById("modalCareer").classList.add("hidden");
 document.getElementById("closeCardModal").onclick=()=>document.getElementById("modalCard").classList.add("hidden");
+document.getElementById("saveAnnouncement").onclick=saveAnnouncementText;
+document.getElementById("saveMapNote").onclick=saveMapNoteText;
 
 function openCareerModal(careerObj){
     const m = document.getElementById("modalCareer");
@@ -332,10 +663,26 @@ document.getElementById("importFile").onchange=async (e)=>{
 //渲染全部
 function renderAll(){
     if(!appData) return;
+    renderOverview();
     renderCareerList();
     renderCardFilterSel();
     renderCardList();
     renderStat();
+}
+
+function renderOverview(){
+    const announcement = document.getElementById("announcementText");
+    const mapNote = document.getElementById("mapNoteText");
+    if(announcement && document.activeElement !== announcement){
+        announcement.value = appData.announcement || "";
+    }
+    if(mapNote && document.activeElement !== mapNote){
+        mapNote.value = appData.mapNote || "";
+    }
+    document.getElementById("metricCareer").innerText = appData.careers.length;
+    document.getElementById("metricCard").innerText = appData.cards.length;
+    document.getElementById("metricAnnouncement").innerText = (appData.announcement || "").length;
+    document.getElementById("metricMap").innerText = (appData.mapNote || "").length;
 }
 
 function renderCareerList(){
@@ -404,8 +751,26 @@ function renderStat(){
     t.innerHTML=`
 职业总数：${appData.careers.length}<br>
 卡牌总数：${appData.cards.length}<br>
+公告字数：${(appData.announcement||"").length}<br>
+地图备注字数：${(appData.mapNote||"").length}<br>
 `;
 }
+
+function renderStatsOnly(){
+    if(!appData) return;
+    document.getElementById("metricCareer").innerText = appData.careers.length;
+    document.getElementById("metricCard").innerText = appData.cards.length;
+    document.getElementById("metricAnnouncement").innerText = (appData.announcement || "").length;
+    document.getElementById("metricMap").innerText = (appData.mapNote || "").length;
+    renderStat();
+}
+
+document.getElementById("announcementText").addEventListener("input",()=>{
+    document.getElementById("metricAnnouncement").innerText = document.getElementById("announcementText").value.length;
+});
+document.getElementById("mapNoteText").addEventListener("input",()=>{
+    document.getElementById("metricMap").innerText = document.getElementById("mapNoteText").value.length;
+});
 </script>
 </body>
 </html>
