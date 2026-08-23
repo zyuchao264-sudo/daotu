@@ -1,8 +1,6 @@
 const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
-const fs = require('fs');
-const path = require('path');
 
 const app = express();
 const server = http.createServer(app);
@@ -10,9 +8,12 @@ const io = new Server(server, {
   cors: { origin: "*" }
 });
 
-const DATA_FILE = path.join(__dirname, "data.json");
+// Supabase配置，从Render环境变量读取
+const SUPABASE_URL = process.env.SUPABASE_URL;
+const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY;
+const TABLE_NAME = "daotu";
 
-// 初始化默认数据
+// 初始化默认数据（和你原版完全复制，作为兜底）
 const defaultData = {
   announcement:"欢迎来到道途协作工作台，公告栏可以在这里发布当日说明。",
   mapNote:"六边形地图示意区：这里先作为地图模块占位，后续可扩展成真正的地块编辑。",
@@ -81,41 +82,68 @@ const defaultData = {
   ]
 };
 
-if (!fs.existsSync(DATA_FILE)) {
-  fs.writeFileSync(DATA_FILE, JSON.stringify(defaultData,null,2),"utf8");
+// 内存缓存
+let memoryData = {...defaultData};
+
+// 从supabase读取id=1记录
+async function loadSupabase(){
+  if(!SUPABASE_URL || !SUPABASE_SERVICE_KEY){
+    console.warn("⚠️没有配置Supabase环境变量，使用本地默认数据");
+    return;
+  }
+  try{
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/${TABLE_NAME}?id=eq.1&select=content`,{
+      headers:{
+        "apikey":SUPABASE_SERVICE_KEY,
+        "Authorization":`Bearer ${SUPABASE_SERVICE_KEY}`
+      }
+    })
+    const arr = await res.json();
+    if(Array.isArray(arr) && arr.length>0 && arr[0].content){
+      memoryData = arr[0].content;
+      console.log("✅成功从Supabase加载数据");
+    }else{
+      console.log("ℹ️Supabase无id=1记录，使用defaultData");
+    }
+  }catch(e){
+    console.error("❌读取Supabase失败",e);
+  }
 }
 
-function loadData(){
-  const data = JSON.parse(fs.readFileSync(DATA_FILE,"utf8"));
-  return {
-    ...defaultData,
-    ...data,
-    careers: Array.isArray(data.careers) ? data.careers : defaultData.careers,
-    cards: Array.isArray(data.cards) ? data.cards : defaultData.cards,
-  };
+// 更新supabase id=1
+async function saveSupabase(payload){
+  if(!SUPABASE_URL || !SUPABASE_SERVICE_KEY) return;
+  try{
+    await fetch(`${SUPABASE_URL}/rest/v1/${TABLE_NAME}?id=eq.1`,{
+      method:"PATCH",
+      headers:{
+        "apikey":SUPABASE_SERVICE_KEY,
+        "Authorization":`Bearer ${SUPABASE_SERVICE_KEY}`,
+        "Content-Type":"application/json",
+        "Prefer":"return=representation"
+      },
+      body:JSON.stringify({content:payload})
+    })
+  }catch(err){
+    console.error("❌保存Supabase失败",err);
+  }
 }
-function saveData(d){
-  const cleanCareers = Array.isArray(d.careers)
-    ? d.careers.map(({ _visual, ...rest }) => rest)
-    : defaultData.careers;
-  const next = {
-    ...defaultData,
-    ...d,
-    careers: cleanCareers,
-    cards: Array.isArray(d.cards) ? d.cards : defaultData.cards,
-  };
-  fs.writeFileSync(DATA_FILE, JSON.stringify(next,null,2),"utf8");
-}
+
+// 服务启动拉取云端
+loadSupabase();
 
 app.use(express.static(__dirname));
 
 io.on('connection', (socket)=>{
   console.log("客户端已连接",socket.id);
-  socket.emit("fullData", loadData());
+  // 下发当前内存数据，协议不变 fullData
+  socket.emit("fullData", memoryData);
 
   socket.on("updateAll", (newData)=>{
-    saveData(newData);
-    io.emit("fullData", newData);
+    memoryData = newData;
+    io.emit("fullData", memoryData);
+    // 写入云端
+    saveSupabase(memoryData);
   })
 
   socket.on("disconnect",()=>{
