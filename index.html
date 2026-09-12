@@ -5,155 +5,304 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>道途｜卡牌&职业协作工作台</title>
 <style>
-*{box-sizing:border-box;font-family:"Microsoft Yahei",sans-serif;}
+/* ========== 道途 · 设计变量 ========== */
+*,*::before,*::after{box-sizing:border-box}
 :root{
-    --bg:#f4efe6;
-    --bg-accent:#ebe2d1;
-    --panel:#fffaf1;
-    --panel-strong:#fff4df;
-    --border:#d8c6a7;
-    --text:#26221b;
-    --muted:#6a6155;
-    --brand:#7b5430;
-    --brand-strong:#5a3b20;
-    --brand-soft:#f2e0c6;
-    --success:#2f7a46;
-    --danger:#a24a3b;
-    --shadow:0 18px 45px rgba(52,38,19,.10);
+    --ink:#2b2419;
+    --ink-soft:#5e5140;
+    --muted:#80725a;
+    --panel:#fffdf8;
+    --panel-2:#fdf5e6;
+    --line:#ddcaa6;
+    --line-soft:rgba(190,164,120,.45);
+    --wood:#5c4023;
+    --brass:#c39a52;
+    --brass-deep:#8a6428;
+    --brand:#7a5430;
+    --brand-strong:#553717;
+    --success:#35734a;
+    --danger:#a8443a;
+    --secret:#6f4bc4;
+    --radius-lg:22px;
+    --radius:16px;
+    --radius-sm:12px;
+    --shadow-sm:0 2px 10px rgba(63,43,18,.07);
+    --shadow:0 16px 38px rgba(63,43,18,.10);
+    --font-body:"PingFang SC","Hiragino Sans GB","Microsoft YaHei","Segoe UI",system-ui,sans-serif;
+    --font-display:"Noto Serif SC","Source Han Serif SC","Songti SC","STSong","SimSun",Georgia,serif;
 }
+html{scroll-behavior:smooth;scrollbar-gutter:stable}
 body{
     margin:0;
-    color:var(--text);
+    min-height:100vh;
+    color:var(--ink);
+    font-family:var(--font-body);
+    font-size:14px;
+    line-height:1.6;
     background:
-        radial-gradient(circle at top left, rgba(255,255,255,.7), transparent 34%),
-        radial-gradient(circle at right top, rgba(215,178,118,.18), transparent 22%),
-        linear-gradient(180deg, #f8f4ec 0%, var(--bg) 100%);
+        radial-gradient(900px 520px at 10% -10%, rgba(255,255,255,.92), transparent 62%),
+        radial-gradient(760px 460px at 100% 0%, rgba(198,154,88,.20), transparent 58%),
+        linear-gradient(180deg,#fcf7ee 0%,#f2e8d6 58%,#ecdfc8 100%);
+    background-attachment:fixed;
+    -webkit-font-smoothing:antialiased;
 }
-.container{max-width:1440px;margin:0 auto;padding:14px;}
-.shell{
-    background:rgba(255,255,255,.38);
-    border:1px solid rgba(215,198,168,.75);
-    border-radius:24px;
-    box-shadow:var(--shadow);
-    padding:14px;
-    backdrop-filter:blur(8px);
+/* 纸张颗粒纹理：只铺在背景层，不压住文字 */
+body::before{
+    content:"";
+    position:fixed;
+    inset:0;
+    z-index:0;
+    pointer-events:none;
+    opacity:.42;
+    mix-blend-mode:multiply;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)' opacity='.32'/%3E%3C/svg%3E");
 }
-.hero{
-    display:grid;
-    grid-template-columns:minmax(0,1.5fr) minmax(280px,.85fr);
-    gap:14px;
-    align-items:stretch;
-    margin-bottom:10px;
+body.modal-open{overflow:hidden}
+::-webkit-scrollbar{width:10px;height:10px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:rgba(138,110,70,.35);border:3px solid transparent;border-radius:999px;background-clip:content-box}
+::-webkit-scrollbar-thumb:hover{background:rgba(138,110,70,.55);background-clip:content-box}
+:focus-visible{outline:2px solid rgba(195,154,82,.95);outline-offset:2px}
+
+/* ========== 顶部应用栏 ========== */
+.appbar{
+    position:sticky;
+    top:0;
+    z-index:60;
+    padding:10px 16px 0;
+    background:linear-gradient(180deg, rgba(252,247,238,.95), rgba(249,241,228,.86));
+    border-bottom:1px solid var(--line-soft);
+    box-shadow:0 8px 22px rgba(63,43,18,.07);
+    backdrop-filter:blur(14px) saturate(1.2);
 }
-.hero-card{
-    background:linear-gradient(135deg, rgba(255,250,242,.96), rgba(245,234,215,.95));
-    border:1px solid rgba(215,198,168,.9);
-    border-radius:20px;
-    padding:14px;
-    box-shadow:var(--shadow);
-}
-.hero-title{
-    display:flex;
-    justify-content:space-between;
-    gap:12px;
-    align-items:flex-start;
-    flex-wrap:wrap;
-}
-.hero-title h2{margin:0;font-size:28px;letter-spacing:.5px;}
-.hero-title p{margin:6px 0 0;color:var(--muted);}
-.info-bar{font-size:13px;color:var(--muted);background:rgba(255,255,255,.75);padding:8px 12px;border-radius:999px;border:1px solid rgba(215,198,168,.85);}
-.metric-row{display:flex;gap:10px;flex-wrap:wrap;margin-top:12px;}
-.metric{
-    min-width:120px;
-    padding:10px 12px;
+.appbar-inner{max-width:1440px;margin:0 auto;display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+.brand{display:flex;align-items:center;gap:12px;min-width:0}
+.brand-mark{
+    width:46px;
+    height:46px;
+    flex:0 0 auto;
     border-radius:14px;
-    background:rgba(255,255,255,.72);
-    border:1px solid rgba(215,198,168,.75);
+    display:grid;
+    place-items:center;
+    font-family:var(--font-display);
+    font-size:24px;
+    font-weight:700;
+    color:#fff6e0;
+    background:radial-gradient(circle at 32% 24%, #8f6733, #4a3117 72%);
+    border:1px solid rgba(196,152,86,.65);
+    box-shadow:inset 0 1px 0 rgba(255,255,255,.28), 0 10px 20px rgba(63,43,18,.28);
 }
-.metric strong{display:block;font-size:20px;line-height:1.1;}
-.metric span{font-size:12px;color:var(--muted);}
-.top-bar{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:12px;}
-button{
-    padding:9px 14px;
-    border:none;
-    border-radius:12px;
-    background:linear-gradient(180deg, var(--brand), var(--brand-strong));
-    color:#fff;
+.brand-text{min-width:0}
+.brand-text h1{margin:0;font-family:var(--font-display);font-size:19px;letter-spacing:.05em;white-space:nowrap}
+.brand-text p{margin:1px 0 0;font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.appbar-actions{margin-left:auto;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.sync-pill{
+    display:inline-flex;
+    align-items:center;
+    gap:8px;
+    font-size:12.5px;
+    padding:7px 14px;
+    border-radius:999px;
+    background:rgba(255,255,255,.78);
+    border:1px solid var(--line-soft);
+    color:var(--ink-soft);
+}
+.sync-pill .dot{width:8px;height:8px;border-radius:50%;background:var(--brass);box-shadow:0 0 0 4px rgba(195,154,82,.20);transition:.2s}
+.sync-pill.online .dot{background:#3f9a5e;box-shadow:0 0 0 4px rgba(63,154,94,.20)}
+.sync-pill.offline .dot{background:#b8453a;box-shadow:0 0 0 4px rgba(184,69,58,.18)}
+.tabbar{max-width:1440px;margin:0 auto;display:flex;gap:6px;padding:10px 0 8px;overflow-x:auto;scrollbar-width:none}
+.tabbar::-webkit-scrollbar{display:none}
+.tab{
+    padding:9px 17px;
+    border-radius:999px;
     cursor:pointer;
-    box-shadow:0 10px 18px rgba(123,84,48,.16);
+    white-space:nowrap;
+    font-size:13.5px;
+    font-weight:600;
+    color:var(--ink-soft);
+    border:1px solid transparent;
+    transition:background .18s ease, color .18s ease, border-color .18s ease, box-shadow .18s ease;
 }
-button.secondary{background:#8f8a82;}
-button.success{background:linear-gradient(180deg, var(--success), #236136);}
-button.ghost{
-    background:transparent;
-    color:var(--brand-strong);
-    border:1px solid rgba(123,84,48,.25);
-    box-shadow:none;
+.tab:hover{background:rgba(255,255,255,.8);border-color:var(--line-soft);color:var(--brand-strong)}
+.tab.active{
+    background:linear-gradient(180deg,#7d5530,#553717);
+    color:#fff6e2;
+    border-color:rgba(196,152,86,.55);
+    box-shadow:0 8px 18px rgba(85,55,23,.26), inset 0 1px 0 rgba(255,255,255,.20);
 }
-button:active{transform:translateY(1px);}
+
+/* ========== 页面骨架 ========== */
+.page{position:relative;z-index:1;max-width:1440px;margin:0 auto;padding:16px}
+.view{animation:viewIn .28s ease both}
+@keyframes viewIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+.hidden{display:none !important}
+
+/* ========== 面板 ========== */
 .panel{
-    background:linear-gradient(180deg, rgba(255,251,244,.96), rgba(255,245,226,.94));
-    border:1px solid var(--border);
-    padding:14px;
-    border-radius:18px;
-    margin-bottom:12px;
-    box-shadow:0 10px 24px rgba(78,55,24,.06);
+    position:relative;
+    background:linear-gradient(180deg,var(--panel),var(--panel-2));
+    border:1px solid var(--line);
+    border-radius:var(--radius-lg);
+    padding:18px;
+    margin-bottom:16px;
+    box-shadow:inset 0 1px 0 rgba(255,255,255,.75), var(--shadow);
 }
+.panel::before{
+    content:"";
+    position:absolute;
+    inset:5px;
+    border-radius:calc(var(--radius-lg) - 6px);
+    border:1px solid rgba(196,152,86,.22);
+    pointer-events:none;
+}
+.section-title{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:14px}
+.section-title h1,.section-title h2,.section-title h3,.section-title h4{margin:0;font-family:var(--font-display);letter-spacing:.03em;line-height:1.3}
+.section-title h3{font-size:18px}
+.section-title small{display:block;margin-top:3px;color:var(--muted);font-size:12px;font-weight:400}
+.muted-text{margin:0 0 10px;color:var(--muted);font-size:13px}
+small{color:var(--muted)}
+
+/* ========== 按钮 ========== */
+button{
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    gap:6px;
+    padding:9px 15px;
+    border-radius:var(--radius-sm);
+    cursor:pointer;
+    font-family:inherit;
+    font-size:13.5px;
+    font-weight:600;
+    color:#fff6e6;
+    background:linear-gradient(180deg,#7d5530,#553717);
+    border:1px solid rgba(85,55,23,.55);
+    box-shadow:inset 0 1px 0 rgba(255,255,255,.22), 0 8px 16px rgba(85,55,23,.18);
+    transition:transform .15s ease, box-shadow .15s ease, filter .15s ease;
+}
+button:hover{filter:brightness(1.06);transform:translateY(-1px);box-shadow:inset 0 1px 0 rgba(255,255,255,.22), 0 12px 22px rgba(85,55,23,.22)}
+button:active{transform:translateY(0);filter:brightness(.98)}
+button.secondary{background:linear-gradient(180deg,#8e8474,#6c6353);border-color:rgba(80,72,58,.5)}
+button.success{background:linear-gradient(180deg,#3d8256,#28583a);border-color:rgba(30,74,48,.55)}
+button.danger{background:linear-gradient(180deg,#b3544a,#85322b);border-color:rgba(110,40,33,.55)}
+button.ghost{background:rgba(255,255,255,.7);color:var(--brand-strong);border:1px solid var(--line);box-shadow:var(--shadow-sm)}
+button.ghost:hover{background:#fff;filter:none}
+button.icon{padding:0;width:36px;height:36px;font-size:15px}
+/* ========== 总览 ========== */
+.hero-title h2{margin:0;font-family:var(--font-display);font-size:24px;letter-spacing:.04em}
+.hero-title p{margin:6px 0 0;color:var(--muted);font-size:13px}
+.metric-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-top:16px}
+.metric{
+    position:relative;
+    overflow:hidden;
+    padding:12px 14px 12px 18px;
+    border-radius:var(--radius);
+    background:linear-gradient(180deg,#fffdf9,#faf1e0);
+    border:1px solid var(--line-soft);
+    box-shadow:var(--shadow-sm);
+}
+.metric::before{content:"";position:absolute;left:0;top:0;bottom:0;width:4px;background:linear-gradient(180deg,var(--brass),var(--brass-deep))}
+.metric strong{display:block;font-family:var(--font-display);font-size:23px;line-height:1.15;font-variant-numeric:tabular-nums}
+.metric span{font-size:11.5px;color:var(--muted);letter-spacing:.05em}
+.metric.secret::before{background:linear-gradient(180deg,#8a68d6,var(--secret))}
+.metric.secret strong{color:var(--secret)}
+.overview{display:grid;grid-template-columns:minmax(0,1.05fr) minmax(0,.95fr);gap:16px;align-items:start}
+.overview .panel{margin-bottom:0}
+.map-wrap{display:grid;gap:14px}
+.hex-scene{
+    padding:16px;
+    border-radius:var(--radius);
+    background:
+        linear-gradient(180deg, rgba(255,255,255,.62), rgba(255,249,238,.92)),
+        repeating-linear-gradient(0deg, rgba(123,84,48,.06) 0 1px, transparent 1px 24px);
+    border:1px dashed rgba(123,84,48,.28);
+}
+.hex-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;max-width:330px;margin:0 auto}
+.hex-grid .row-offset{margin-top:24px}
+.hex{
+    aspect-ratio:1/1.12;
+    clip-path:polygon(25% 5%, 75% 5%, 100% 50%, 75% 95%, 25% 95%, 0 50%);
+    display:grid;
+    place-items:center;
+    font-family:var(--font-display);
+    font-weight:700;
+    font-size:13px;
+    letter-spacing:.04em;
+    color:#fff9ef;
+    text-shadow:0 1px 2px rgba(0,0,0,.25);
+    background:linear-gradient(180deg,#d9c19b,#b89461);
+    box-shadow:0 10px 20px rgba(96,69,32,.16);
+    transition:transform .18s ease, filter .18s ease;
+}
+.hex:hover{transform:translateY(-2px);filter:brightness(1.05)}
+.hex.alt{background:linear-gradient(180deg,#e6d5b6,#c79f6f)}
+.hex.note{background:linear-gradient(180deg,#7f5a36,#5a3c22)}
+
+/* ========== 职业图鉴 ========== */
+.career-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(310px,1fr));gap:16px;align-items:start}
 .career-card{
-    width:360px;
+    margin:0;
+    padding:16px;
     display:flex;
     flex-direction:column;
     gap:12px;
     overflow:hidden;
-    position:relative;
+    transition:transform .2s ease, box-shadow .2s ease;
 }
+.career-card:hover{transform:translateY(-3px);box-shadow:inset 0 1px 0 rgba(255,255,255,.75), 0 24px 44px rgba(63,43,18,.16)}
 .career-portrait{
     position:relative;
     width:100%;
-    aspect-ratio: 3 / 4;
-    border-radius:16px;
+    aspect-ratio:3/4;
+    border-radius:var(--radius);
     overflow:hidden;
-    background:linear-gradient(180deg, #f5e7c5, #e2c995);
+    background:linear-gradient(180deg,#f5e7c5,#e0c795);
     border:1px solid rgba(181,140,72,.55);
-    box-shadow:inset 0 0 0 1px rgba(255,255,255,.35);
+    box-shadow:inset 0 0 0 1px rgba(255,255,255,.35), inset 0 -46px 60px rgba(60,38,12,.16);
 }
-.career-portrait img{
-    width:100%;
-    height:100%;
-    object-fit:cover;
-    display:block;
-}
+.career-portrait img{width:100%;height:100%;object-fit:cover;display:block}
 .career-portrait::after{
     content:"";
     position:absolute;
     inset:0;
-    background:linear-gradient(180deg, rgba(255,255,255,.03) 0%, rgba(72,46,15,.02) 55%, rgba(31,18,8,.16) 100%);
     pointer-events:none;
+    background:linear-gradient(180deg, rgba(255,255,255,.05) 0%, rgba(72,46,15,.04) 55%, rgba(31,18,8,.22) 100%);
+}
+.career-portrait.no-image::before{
+    content:attr(data-initial);
+    position:absolute;
+    inset:0;
+    display:grid;
+    place-items:center;
+    font-family:var(--font-display);
+    font-size:76px;
+    color:rgba(96,64,26,.26);
 }
 .career-rank{
     position:absolute;
     left:12px;
     top:12px;
-    width:34px;
-    height:34px;
+    width:36px;
+    height:36px;
     border-radius:50%;
     display:flex;
     align-items:center;
     justify-content:center;
-    background:linear-gradient(180deg, #ead08f, #bf8d3e);
-    border:1px solid #8e652d;
-    color:#5e4016;
+    font-family:var(--font-display);
     font-weight:700;
+    color:#5e4016;
+    background:linear-gradient(180deg,#ead08f,#bf8d3e);
+    border:1px solid #8e652d;
+    box-shadow:0 8px 16px rgba(101,72,24,.20);
     z-index:1;
-    box-shadow:0 8px 16px rgba(101,72,24,.18);
 }
-.career-body{display:flex;flex-direction:column;gap:10px;}
-.career-head{display:flex;justify-content:space-between;gap:10px;align-items:flex-start;}
-.career-head h4{margin:0;font-size:22px;}
-.career-subtitle{color:var(--brand-strong);font-size:13px;font-weight:700;letter-spacing:.2px;margin-top:4px;}
+.career-body{display:flex;flex-direction:column;gap:10px}
+.career-head{display:flex;justify-content:space-between;gap:10px;align-items:flex-start}
+.career-head h4{margin:0;font-family:var(--font-display);font-size:22px;letter-spacing:.03em}
+.career-subtitle{margin-top:4px;color:var(--brand-strong);font-size:13px;font-weight:700;letter-spacing:.02em}
 .career-rolechip{
     flex:0 0 auto;
-    padding:6px 10px;
+    padding:6px 11px;
     border-radius:999px;
     background:#f0dfbd;
     color:#6a4b1d;
@@ -164,405 +313,618 @@ button:active{transform:translateY(1px);}
 .career-summary{
     padding:10px 12px;
     border-radius:14px;
-    background:rgba(255,255,255,.7);
+    background:rgba(255,255,255,.72);
     border:1px solid rgba(215,198,168,.7);
     color:#56493a;
-    line-height:1.65;
     font-size:13px;
+    line-height:1.7;
 }
-.career-chips{
-    display:flex;
-    flex-wrap:wrap;
-    gap:8px;
-}
+.career-chips{display:flex;flex-wrap:wrap;gap:8px}
 .career-chip{
-    padding:5px 9px;
+    padding:5px 10px;
     border-radius:999px;
     background:#fff6df;
     color:#7b5a2d;
     border:1px solid rgba(176,131,63,.35);
     font-size:12px;
 }
-.career-facts{
-    display:grid;
-    grid-template-columns:repeat(3,minmax(0,1fr));
-    gap:8px;
-}
-.career-facts .fact{
-    padding:8px 9px;
-    border-radius:12px;
-    background:#fff7ea;
-    border:1px solid rgba(205,179,134,.7);
-}
-.career-facts .fact b{
-    display:block;
-    font-size:11px;
-    color:#8a6a3c;
-    margin-bottom:4px;
-}
-.career-facts .fact span{
-    display:block;
-    font-size:12px;
-    line-height:1.45;
-}
-.career-details{
-    border-top:1px solid rgba(181,140,72,.2);
-    padding-top:2px;
-}
-.career-details summary{
-    cursor:pointer;
-    list-style:none;
-    font-weight:700;
-    color:var(--brand-strong);
-    padding:6px 0;
-}
-.career-details summary::-webkit-details-marker{display:none;}
-.career-details .tree-node{font-size:12px;line-height:1.55;margin:6px 0;padding:8px 10px;}
-.career-action{
-    width:100%;
-    margin-top:2px;
-}
-.section-title{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px;}
-.section-title h3,.section-title h4{margin:0;}
-.section-title small{color:var(--muted);}
-.dashboard{
-    display:grid;
-    grid-template-columns:1.15fr .85fr;
-    gap:14px;
-    margin-bottom:10px;
-}
-.dashboard-card{
-    background:linear-gradient(180deg, rgba(255,252,247,.98), rgba(247,236,214,.96));
-    border:1px solid rgba(215,198,168,.95);
-    border-radius:22px;
-    padding:14px;
-    box-shadow:var(--shadow);
-}
-.dashboard-card h3{margin:0 0 8px;font-size:18px;}
-.dashboard-card p{margin:0 0 8px;color:var(--muted);line-height:1.5;font-size:13px;}
-.dashboard-card textarea,.dashboard-card input{margin-top:0;}
-.map-wrap{
-    display:grid;
-    grid-template-columns:1fr auto;
-    gap:14px;
-    align-items:start;
-}
-.hex-scene{
-    padding:12px;
-    border-radius:18px;
-    background:
-        linear-gradient(180deg, rgba(255,255,255,.55), rgba(255,248,236,.9)),
-        repeating-linear-gradient(0deg, rgba(123,84,48,.05) 0 1px, transparent 1px 22px);
-    border:1px dashed rgba(123,84,48,.24);
-    min-height:190px;
-}
-.hex-grid{
-    display:grid;
-    grid-template-columns:repeat(3, 1fr);
-    gap:10px;
-    max-width:360px;
-    margin:0 auto;
-}
-.hex-grid .row-offset{margin-top:26px;}
-.hex{
-    aspect-ratio:1 / 1.1;
-    clip-path:polygon(25% 6%, 75% 6%, 100% 50%, 75% 94%, 25% 94%, 0 50%);
-    background:linear-gradient(180deg, #d8c09a, #b89461);
-    border:1px solid rgba(92,66,34,.28);
-    display:flex;
-    align-items:center;
-    justify-content:center;
-    color:#fff9ef;
-    font-weight:700;
-    text-shadow:0 1px 0 rgba(0,0,0,.15);
-    box-shadow:0 10px 24px rgba(96,69,32,.14);
-}
-.hex.alt{background:linear-gradient(180deg, #e5d4b5, #c79f6f);}
-.hex.note{
-    background:linear-gradient(180deg, #7f5a36, #5f4026);
-}
-.map-note{
-    min-width:240px;
-    max-width:300px;
-}
-.tabs{
-    display:flex;
-    gap:8px;
-    margin-bottom:12px;
-    flex-wrap:wrap;
-    position:sticky;
-    top:10px;
-    z-index:20;
-    padding:8px 10px;
-    border-radius:16px;
-    background:rgba(250,245,236,.82);
-    backdrop-filter:blur(8px);
-    border:1px solid rgba(215,198,168,.72);
-}
-.tab{
-    padding:9px 14px;
-    background:rgba(255,255,255,.7);
-    cursor:pointer;
-    border-radius:999px;
-    border:1px solid rgba(215,198,168,.9);
-    color:var(--muted);
-}
-.tab.active{
-    background:linear-gradient(180deg, var(--brand), var(--brand-strong));
-    color:white;
-    border-color:transparent;
-}
-.modal{
-    position:fixed;
-    top:0;left:0;
-    width:100%;height:100%;
-    background:rgba(20,14,9,.44);
-    display:flex;
-    align-items:center;
-    justify-content:center;
-    z-index:99;
-    padding:18px;
-}
-.modal-content{
-    background:linear-gradient(180deg, #fffaf1, #f8eed9);
-    padding:18px;
-    border-radius:20px;
-    width:min(96%,760px);
-    max-height:88vh;
-    overflow:auto;
-    border:1px solid rgba(215,198,168,.95);
-    box-shadow:var(--shadow);
-}
-.hidden{display:none !important;}
-input,textarea,select{
-    width:100%;
-    padding:10px 12px;
-    margin:6px 0 10px;
-    border:1px solid #cdb999;
-    border-radius:12px;
-    background:rgba(255,255,255,.9);
-    color:var(--text);
-}
-textarea{min-height:96px;resize:vertical;}
+.career-facts{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.career-facts .fact{padding:9px 10px;border-radius:12px;background:#fff7ea;border:1px solid rgba(205,179,134,.7)}
+.career-facts .fact b{display:block;font-size:11px;color:#8a6a3c;margin-bottom:4px;letter-spacing:.04em}
+.career-facts .fact span{display:block;font-size:12px;line-height:1.5}
+.career-details{border-top:1px solid rgba(181,140,72,.22);padding-top:2px}
+.career-details summary{display:flex;align-items:center;gap:8px;cursor:pointer;list-style:none;font-weight:700;font-size:13px;color:var(--brand-strong);padding:8px 0}
+.career-details summary::-webkit-details-marker{display:none}
+.career-details summary::before{content:"\25B8";transition:transform .18s ease}
+.career-details[open] summary::before{transform:rotate(90deg)}
+.career-action{width:100%;margin-top:2px}
 .tree-node{
     margin:8px 0;
     padding:10px 12px;
-    border-left:4px solid #8c6b3e;
-    background:#fff4e0;
+    border-left:3px solid var(--brass);
+    background:rgba(255,246,228,.85);
     border-radius:10px;
+    font-size:12.5px;
+    line-height:1.75;
 }
-small{color:var(--muted);}
-.flex-row{display:flex;gap:12px;flex-wrap:wrap;}
-.card-item{
-    width:220px;
-    background:linear-gradient(180deg, #fff9ef, #f7ebd6);
-    border:1px solid #c9b28b;
-    padding:12px;
-    border-radius:16px;
+.tree-node b{color:var(--brand-strong)}
+/* ========== 卡牌库 ========== */
+.filter-panel{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:0 14px;align-items:start}
+.count-chip{
+    font-size:12px;
+    font-weight:700;
+    color:var(--ink-soft);
+    background:rgba(255,255,255,.82);
+    border:1px solid var(--line-soft);
+    border-radius:999px;
+    padding:5px 12px;
+}
+.legend{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px;padding-top:14px;border-top:1px dashed var(--line-soft)}
+.legend-chip{
+    display:inline-flex;
+    align-items:center;
+    gap:6px;
+    padding:6px 12px;
+    border-radius:999px;
+    font-size:12px;
     cursor:pointer;
-    box-shadow:0 10px 22px rgba(82,58,28,.06);
+    color:var(--ink-soft);
+    background:#fffdf8;
+    border:1px solid var(--line);
+    box-shadow:var(--shadow-sm);
+    transition:transform .16s ease, border-color .16s ease, background .16s ease;
 }
-.card-item b{font-size:15px;}
-.grid-2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;}
-.muted-card{
+.legend-chip b{font-size:11px;opacity:.65;font-variant-numeric:tabular-nums}
+.legend-chip:hover{transform:translateY(-1px);border-color:var(--brass)}
+.legend-chip.active{background:linear-gradient(180deg,#7d5530,#553717);color:#fff6e2;border-color:transparent}
+.legend-chip.active b{opacity:.85}
+.card-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(238px,1fr));gap:14px}
+.card-item{
+    position:relative;
+    overflow:hidden;
+    padding:14px 14px 14px 18px;
+    border-radius:var(--radius);
+    cursor:pointer;
+    background:linear-gradient(180deg,#fffdf9,#fbf3e4);
+    border:1px solid var(--line);
+    box-shadow:var(--shadow-sm);
+    transition:transform .18s ease, box-shadow .18s ease, border-color .18s ease;
+}
+.card-item::before{content:"";position:absolute;left:0;top:0;bottom:0;width:5px;background:var(--card-accent,#8a7a63)}
+.card-item:hover{transform:translateY(-3px);border-color:rgba(196,152,86,.75);box-shadow:0 18px 30px rgba(63,43,18,.14)}
+.card-item.secret{background:linear-gradient(180deg,#fdfbff,#f4efff)}
+.card-item.secret::after{
+    content:"";
+    position:absolute;
+    inset:0;
+    pointer-events:none;
+    border-radius:inherit;
+    background:radial-gradient(150px 90px at 100% 0, rgba(111,75,196,.16), transparent 70%);
+}
+.card-top{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.type-badge{
+    display:inline-flex;
+    align-items:center;
+    gap:5px;
+    padding:4px 10px;
+    border-radius:999px;
+    font-size:11.5px;
+    font-weight:700;
+    color:var(--card-accent,#8a7a63);
+    background:var(--card-accent-soft,rgba(138,122,99,.14));
+    border:1px solid var(--card-accent-line,rgba(138,122,99,.45));
+}
+.card-name{margin:10px 0 0;font-family:var(--font-display);font-size:16.5px;letter-spacing:.02em}
+.card-meta{display:flex;flex-wrap:wrap;gap:8px;margin-top:7px;font-size:11.5px;color:var(--muted)}
+.card-meta .meta-item{padding:2px 9px;border-radius:999px;background:rgba(255,255,255,.78);border:1px solid var(--line-soft)}
+.secret-trigger{
+    margin-top:10px;
+    padding:8px 11px;
+    border-radius:12px;
+    font-size:12px;
+    line-height:1.6;
+    color:#4a2f8f;
+    background:linear-gradient(135deg, rgba(111,75,196,.12), rgba(111,75,196,.04));
+    border:1px dashed rgba(111,75,196,.42);
+}
+.card-effect{
+    margin:10px 0 0;
+    font-size:12.5px;
+    line-height:1.7;
+    color:var(--ink-soft);
+    display:-webkit-box;
+    -webkit-line-clamp:4;
+    -webkit-box-orient:vertical;
+    overflow:hidden;
+}
+.card-note{
+    margin:10px 0 0;
+    padding-top:8px;
+    border-top:1px dashed var(--line-soft);
+    font-size:11.5px;
+    color:var(--muted);
+    display:-webkit-box;
+    -webkit-line-clamp:2;
+    -webkit-box-orient:vertical;
+    overflow:hidden;
+}
+.empty-state{
+    grid-column:1/-1;
+    padding:40px 20px;
+    text-align:center;
+    color:var(--muted);
+    font-size:13px;
     background:rgba(255,255,255,.55);
-    border:1px dashed rgba(123,84,48,.18);
-    border-radius:16px;
-    padding:12px;
+    border:1px dashed var(--line);
+    border-radius:var(--radius);
 }
-@media (max-width: 1100px){
-    .hero,.dashboard,.map-wrap,.grid-2{grid-template-columns:1fr;}
-    .map-note{min-width:0;max-width:none;}
+.empty-state b{display:block;margin-bottom:6px;font-family:var(--font-display);font-size:16px;color:var(--ink-soft)}
+
+/* ========== 统计看板 ========== */
+.stat-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px}
+.stat-card{padding:14px 16px;border-radius:var(--radius);background:linear-gradient(180deg,#fffdf9,#faf1e0);border:1px solid var(--line-soft);box-shadow:var(--shadow-sm)}
+.stat-card strong{display:block;font-family:var(--font-display);font-size:26px;line-height:1.15;font-variant-numeric:tabular-nums}
+.stat-card strong em{font-size:12px;font-style:normal;font-weight:400;color:var(--muted);margin-left:4px}
+.stat-card span{font-size:11.5px;color:var(--muted);letter-spacing:.05em}
+.stat-columns{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:14px;margin-top:16px}
+.stat-column{padding:14px 16px;border-radius:var(--radius);background:rgba(255,255,255,.6);border:1px solid var(--line-soft)}
+.stat-column h4{margin:0 0 10px;font-family:var(--font-display);font-size:14px;color:var(--brand-strong);letter-spacing:.04em}
+.bar-row{display:grid;grid-template-columns:minmax(92px,auto) 1fr auto;gap:10px;align-items:center;margin:9px 0;font-size:12.5px}
+.bar-label{display:inline-flex;align-items:center;gap:6px;color:var(--ink-soft);font-weight:600;white-space:nowrap}
+.bar{height:10px;border-radius:999px;background:rgba(122,100,70,.14);overflow:hidden;box-shadow:inset 0 1px 2px rgba(63,43,18,.08)}
+.bar i{display:block;height:100%;border-radius:999px;background:var(--bar-accent,#b08a3a);box-shadow:inset 0 1px 0 rgba(255,255,255,.35);transition:width .45s ease}
+.bar-value{min-width:34px;text-align:right;color:var(--muted);font-variant-numeric:tabular-nums}
+.secret-row{display:flex;gap:10px;align-items:flex-start;padding:9px 0;border-bottom:1px dashed var(--line-soft);font-size:12.5px}
+.secret-row:last-child{border-bottom:none}
+.secret-row b{color:var(--brand-strong)}
+.secret-row span{color:var(--muted)}
+
+/* ========== 表单 ========== */
+label{display:block;margin:12px 0 0;font-size:12.5px;font-weight:600;color:#6b5a41;letter-spacing:.02em}
+.hint{display:block;margin-top:6px;font-size:11.5px;color:var(--muted);font-weight:400;line-height:1.6}
+input,textarea,select{
+    width:100%;
+    margin-top:6px;
+    padding:10px 12px;
+    font-family:inherit;
+    font-size:13.5px;
+    color:var(--ink);
+    background:#fffdf8;
+    border:1px solid var(--line);
+    border-radius:var(--radius-sm);
+    box-shadow:inset 0 1px 2px rgba(63,43,18,.05);
+    transition:border-color .15s ease, box-shadow .15s ease;
 }
-@media (max-width: 720px){
-    .container{padding:10px;}
-    .shell{padding:12px;border-radius:18px;}
-    .hero-title h2{font-size:22px;}
-    .hex-grid{max-width:none;}
-    .tabs{top:6px;padding:8px;}
-    .career-card{width:100%;}
-    .career-facts{grid-template-columns:1fr;}
+input:focus,textarea:focus,select:focus{outline:none;border-color:var(--brass);box-shadow:0 0 0 3px rgba(195,154,82,.22)}
+input::placeholder,textarea::placeholder{color:rgba(128,114,90,.6)}
+textarea{min-height:92px;resize:vertical;line-height:1.7}
+select{
+    appearance:none;
+    padding-right:34px;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1.5 6 6.5 11 1.5' fill='none' stroke='%238a6428' stroke-width='1.6' stroke-linecap='round'/%3E%3C/svg%3E");
+    background-repeat:no-repeat;
+    background-position:right 12px center;
 }
-</style>
+input[type="file"]{padding:8px}
+.form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 14px}
+.span-2{grid-column:1/-1}
+.form-subhead{
+    margin:20px 0 0;
+    padding-top:14px;
+    border-top:1px dashed var(--line-soft);
+    font-family:var(--font-display);
+    font-size:14px;
+    color:var(--brand-strong);
+    letter-spacing:.04em;
+}
+
+/* ========== 弹窗：相对视口居中 + 柔和遮罩 ========== */
+.modal{
+    position:fixed;
+    inset:0;
+    z-index:200;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    padding:18px;
+    background:radial-gradient(1200px 700px at 50% 0%, rgba(58,40,18,.18), rgba(46,31,14,.44));
+    backdrop-filter:blur(6px);
+    animation:fadeIn .2s ease both;
+}
+.modal-content{
+    width:min(100%,860px);
+    max-height:min(90vh,940px);
+    display:flex;
+    flex-direction:column;
+    overflow:hidden;
+    background:linear-gradient(180deg,#fffdf8,#fbf2e2);
+    border:1px solid rgba(196,152,86,.6);
+    border-radius:22px;
+    box-shadow:0 40px 90px rgba(41,26,10,.38), inset 0 1px 0 rgba(255,255,255,.8);
+    animation:popIn .22s cubic-bezier(.2,.9,.3,1.04) both;
+}
+.modal-head{
+    flex:0 0 auto;
+    display:flex;
+    align-items:flex-start;
+    gap:12px;
+    padding:16px 18px;
+    border-bottom:1px solid var(--line-soft);
+    background:linear-gradient(180deg, rgba(255,255,255,.92), rgba(252,246,235,.7));
+}
+.modal-head h3{margin:0;font-family:var(--font-display);font-size:19px;letter-spacing:.03em}
+.modal-head small{display:block;margin-top:3px}
+.modal-head .type-badge{margin-top:2px}
+.modal-close{
+    margin-left:auto;
+    flex:0 0 auto;
+    width:34px;
+    height:34px;
+    padding:0;
+    border-radius:11px;
+    font-size:15px;
+    color:var(--ink-soft);
+    background:rgba(255,255,255,.85);
+    border:1px solid var(--line-soft);
+    box-shadow:var(--shadow-sm);
+}
+.modal-close:hover{color:var(--danger);background:#fff;filter:none;transform:none}
+.modal-body{flex:1 1 auto;padding:6px 18px 18px;overflow:auto;overscroll-behavior:contain}
+.modal-foot{
+    flex:0 0 auto;
+    display:flex;
+    align-items:center;
+    gap:10px;
+    flex-wrap:wrap;
+    padding:14px 18px;
+    border-top:1px solid var(--line-soft);
+    background:linear-gradient(0deg, rgba(252,244,232,.96), rgba(253,249,240,.78));
+}
+.modal-foot .spacer{margin-left:auto}
+@keyframes fadeIn{from{opacity:0}to{opacity:1}}
+@keyframes popIn{from{opacity:0;transform:translateY(12px) scale(.985)}to{opacity:1;transform:none}}
+
+/* ========== 轻提示 ========== */
+.toast-wrap{position:fixed;left:50%;bottom:26px;transform:translateX(-50%);z-index:300;display:flex;flex-direction:column;align-items:center;gap:8px;pointer-events:none}
+.toast{
+    padding:10px 18px;
+    border-radius:999px;
+    font-size:13px;
+    color:#fff5e2;
+    background:rgba(43,30,16,.93);
+    border:1px solid rgba(196,152,86,.35);
+    box-shadow:0 16px 34px rgba(41,26,10,.32);
+    animation:toastIn .24s ease both;
+}
+@keyframes toastIn{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+
+/* ========== 响应式 ========== */
+@media (max-width:1080px){
+    .overview{grid-template-columns:1fr}
+}
+@media (max-width:760px){
+    .page{padding:12px}
+    .appbar{padding:10px 12px 0}
+    .brand-text h1{font-size:17px}
+    .brand-text p{display:none}
+    .appbar-actions{width:100%;margin-left:0}
+    .metric-row{grid-template-columns:repeat(2,minmax(0,1fr))}
+    .panel{padding:14px;border-radius:18px}
+    .career-grid,.card-grid{grid-template-columns:1fr}
+    .career-facts{grid-template-columns:1fr}
+    .form-grid{grid-template-columns:1fr}
+    .modal{padding:10px}
+    .modal-content{max-height:94vh;border-radius:18px}
+    .modal-body{padding:4px 14px 14px}
+    .modal-foot{padding:12px 14px}
+    .modal-foot button{flex:1 1 auto}
+    .modal-foot .spacer{display:none}
+}
+@media (prefers-reduced-motion:reduce){
+    html{scroll-behavior:auto}
+    *,*::before,*::after{animation-duration:.001ms !important;transition-duration:.001ms !important}
+}
 <script src="/socket.io/socket.io.js"></script>
 </head>
 <body>
-<div class="container">
-<div class="shell">
-<div class="hero">
-    <div class="hero-card">
-        <div class="hero-title">
-            <div>
-                <h2>道途桌游｜卡牌&职业协作工作台</h2>
-                <p>把公告、地图示意和卡牌管理放在一个页面里，方便多人协同编辑。</p>
+<header class="appbar">
+    <div class="appbar-inner">
+        <div class="brand">
+            <div class="brand-mark">道</div>
+            <div class="brand-text">
+                <h1>道途桌游 · 卡牌与职业工作台</h1>
+                <p>公告、地图、职业图鉴与卡牌库的多人协同编辑台</p>
             </div>
-            <span class="info-bar" id="syncStatus">🟡连接中…</span>
         </div>
-        <div class="metric-row">
-            <div class="metric"><strong id="metricCareer">0</strong><span>职业数量</span></div>
-            <div class="metric"><strong id="metricCard">0</strong><span>卡牌数量</span></div>
-            <div class="metric"><strong id="metricAnnouncement">0</strong><span>公告字数</span></div>
-            <div class="metric"><strong id="metricMap">0</strong><span>地图备注字数</span></div>
-        </div>
-    </div>
-    <div class="hero-card">
-        <div class="section-title">
-            <h3>快捷操作</h3>
-            <small>常用入口</small>
-        </div>
-        <div class="top-bar">
-            <button id="btnAddCareer" class="success">➕新增职业</button>
-            <button id="btnNewCard">🃏新建卡牌</button>
-            <button id="btnExport">📤导出JSON备份</button>
-            <button id="btnImport">📥导入JSON</button>
+        <div class="appbar-actions">
+            <span class="sync-pill" id="syncStatus"><span class="dot"></span><span class="sync-text">连接中…</span></span>
+            <button id="btnAddCareer" class="success">➕ 新增职业</button>
+            <button id="btnNewCard">🃏 新建卡牌</button>
+            <button id="btnExport" class="ghost">📤 导出</button>
+            <button id="btnImport" class="ghost">📥 导入</button>
             <input type="file" id="importFile" accept=".json" class="hidden">
         </div>
-        <div class="muted-card">
-            <small>提示：公告和地图备注都会跟随当前数据一起保存到云端。</small>
-        </div>
     </div>
-</div>
+    <nav class="tabbar" id="tabBar" role="tablist">
+        <div class="tab active" data-view="overview" role="tab" tabindex="0">总览</div>
+        <div class="tab" data-view="careerList" role="tab" tabindex="0">职业图鉴</div>
+        <div class="tab" data-view="cardLib" role="tab" tabindex="0">卡牌库</div>
+        <div class="tab" data-view="stat" role="tab" tabindex="0">统计看板</div>
+    </nav>
+</header>
 
-<div class="dashboard">
-    <div class="dashboard-card">
-        <div class="section-title">
-            <div>
-                <h3>公告栏</h3>
-                <small>可编辑并保存的公共通知区</small>
-            </div>
-            <button id="saveAnnouncement" class="success">保存公告</button>
-        </div>
-        <p>这里可以写当前版本说明、测试提醒、协作须知，保存后会同步给所有打开页面的人。</p>
-        <textarea id="announcementText" placeholder="请输入公告内容"></textarea>
-    </div>
-    <div class="dashboard-card">
-        <div class="section-title">
-            <div>
-                <h3>地图模块</h3>
-                <small>先放六边形地块示例，后续可继续扩展</small>
-            </div>
-            <button id="saveMapNote" class="ghost">保存备注</button>
-        </div>
-        <div class="map-wrap">
-            <div class="hex-scene">
-                <div class="hex-grid">
-                    <div class="hex">A1</div>
-                    <div class="hex alt">A2</div>
-                    <div class="hex">A3</div>
-                    <div class="hex alt row-offset">B1</div>
-                    <div class="hex note row-offset">中心</div>
-                    <div class="hex alt row-offset">B3</div>
+<main class="page">
+    <section id="view-overview" class="view">
+        <div class="panel">
+            <div class="hero-title">
+                <div>
+                    <h2>道途 · 协作工作台</h2>
+                    <p>把公告、地图示意与卡牌设计放在同一张桌面上，多人同时推进也不会撞车。</p>
                 </div>
             </div>
-            <div class="map-note">
-                <label>地图备注 / 文字说明</label>
-                <textarea id="mapNoteText" placeholder="例如：这里可以填写地图规则、地块说明、区域名字、坐标提示等"></textarea>
+            <div class="metric-row">
+                <div class="metric"><strong id="metricCareer">0</strong><span>职业数量</span></div>
+                <div class="metric"><strong id="metricCard">0</strong><span>卡牌条目</span></div>
+                <div class="metric"><strong id="metricCardTotal">0</strong><span>卡牌总张数</span></div>
+                <div class="metric secret"><strong id="metricSecret">0</strong><span>奥秘卡</span></div>
+                <div class="metric"><strong id="metricAnnouncement">0</strong><span>公告字数</span></div>
+                <div class="metric"><strong id="metricMap">0</strong><span>地图备注字数</span></div>
             </div>
         </div>
-    </div>
-</div>
-
-<div class="tabs">
-    <div class="tab active" data-view="careerList">职业列表</div>
-    <div class="tab" data-view="cardLib">卡牌库</div>
-    <div class="tab" data-view="stat">统计看板</div>
-</div>
-
-<div id="view-careerList" class="view">
-    <div id="careerWrap" class="flex-row"></div>
-</div>
-
-<div id="view-cardLib" class="view hidden">
-    <div class="panel">
-        <div class="grid-2">
-            <div>
-                <label>职业筛选</label>
-                <select id="filterCareer"><option value="">全部职业</option></select>
+        <div class="overview">
+            <div class="panel">
+                <div class="section-title">
+                    <div>
+                        <h3>公告栏</h3>
+                        <small>可编辑并保存的公共通知区</small>
+                    </div>
+                    <button id="saveAnnouncement" class="success">保存公告</button>
+                </div>
+                <p class="muted-text">版本说明、测试提醒、协作须知都可以写在这里，保存后会同步给所有打开页面的人。</p>
+                <textarea id="announcementText" placeholder="请输入公告内容"></textarea>
             </div>
-            <div>
-                <label>类型筛选</label>
-                <select id="filterType"><option value="">全部卡牌类型</option><option>行动卡</option><option>武器</option><option>护具</option><option>鞋</option><option>道具</option><option>宠物</option></select>
+            <div class="panel">
+                <div class="section-title">
+                    <div>
+                        <h3>地图模块</h3>
+                        <small>六边形地块示意，后续可继续扩展</small>
+                    </div>
+                    <button id="saveMapNote" class="ghost">保存备注</button>
+                </div>
+                <div class="map-wrap">
+                    <div class="hex-scene">
+                        <div class="hex-grid">
+                            <div class="hex">A1</div>
+                            <div class="hex alt">A2</div>
+                            <div class="hex">A3</div>
+                            <div class="hex alt row-offset">B1</div>
+                            <div class="hex note row-offset">中心</div>
+                            <div class="hex alt row-offset">B3</div>
+                        </div>
+                    </div>
+                    <div>
+                        <label>地图备注 / 文字说明</label>
+                        <textarea id="mapNoteText" placeholder="例如：地图规则、地块说明、区域名字、坐标提示等"></textarea>
+                    </div>
+                </div>
             </div>
         </div>
-        <label>搜索卡牌名称</label>
-        <input placeholder="搜索卡牌名称" id="searchCard">
+    </section>
+
+    <section id="view-careerList" class="view hidden">
+        <div class="panel">
+            <div class="section-title">
+                <div>
+                    <h3>职业图鉴</h3>
+                    <small>展示每个职业的定位、建筑与天赋树，点击卡片底部按钮即可编辑</small>
+                </div>
+                <button id="btnAddCareerTop" class="success">➕ 新增职业</button>
+            </div>
+            <div id="careerWrap" class="career-grid"></div>
+        </div>
+    </section>
+
+    <section id="view-cardLib" class="view hidden">
+        <div class="panel">
+            <div class="section-title">
+                <div>
+                    <h3>卡牌库</h3>
+                    <small>按职业与类型筛选，点击卡面即可编辑</small>
+                </div>
+                <span class="count-chip" id="cardCountText">0 / 0 张</span>
+            </div>
+            <div class="filter-panel">
+                <div>
+                    <label>职业筛选</label>
+                    <select id="filterCareer"><option value="">全部职业</option></select>
+                </div>
+                <div>
+                    <label>类型筛选</label>
+                    <select id="filterType"><option value="">全部卡牌类型</option></select>
+                </div>
+                <div>
+                    <label>搜索卡牌</label>
+                    <input placeholder="搜索名称、效果或消耗…" id="searchCard">
+                </div>
+            </div>
+            <div class="legend" id="typeLegend"></div>
+        </div>
+        <div id="cardWrap" class="card-grid"></div>
+    </section>
+
+    <section id="view-stat" class="view hidden">
+        <div class="panel">
+            <div class="section-title">
+                <div>
+                    <h3>统计看板</h3>
+                    <small>职业与卡牌的分布概览</small>
+                </div>
+            </div>
+            <div class="stat-grid" id="statKpis"></div>
+            <div class="stat-columns">
+                <div class="stat-column">
+                    <h4>卡牌类型分布</h4>
+                    <div id="statTypes"></div>
+                </div>
+                <div class="stat-column">
+                    <h4>职业卡牌分布</h4>
+                    <div id="statCareers"></div>
+                </div>
+            </div>
+            <div class="stat-columns">
+                <div class="stat-column">
+                    <h4>奥秘卡一览</h4>
+                    <div id="statSecrets"></div>
+                </div>
+            </div>
+        </div>
+    </section>
+</main>
+
+<!-- 职业编辑弹窗 -->
+<div id="modalCareer" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="careerModalTitle">
+    <div class="modal-content">
+        <div class="modal-head">
+            <div>
+                <h3 id="careerModalTitle">新增职业</h3>
+                <small id="careerModalSub">填写职业基础数据与天赋树</small>
+            </div>
+            <button type="button" class="modal-close" id="closeCareerX" aria-label="关闭">✕</button>
+        </div>
+        <div class="modal-body">
+            <div class="form-grid">
+                <div><label>职业名称</label><input id="cName" placeholder="例如：猎人"></div>
+                <div><label>血量</label><input type="number" id="cHp"></div>
+                <div><label>装备位描述</label><input id="cEquipSlot" placeholder="1武器1护具1鞋1道具"></div>
+                <div><label>专属建筑名称</label><input id="cBuildingName"></div>
+                <div class="span-2"><label>建筑消耗与产出说明</label><textarea id="cBuildingDesc"></textarea></div>
+                <div class="span-2"><label>初始被动天赋</label><textarea id="cPassive0"></textarea></div>
+            </div>
+            <div class="form-subhead">2 级天赋（二选一）</div>
+            <div class="form-grid">
+                <div><label>天赋 A 名称</label><input id="cLv2aName"></div>
+                <div><label>天赋 A 消耗</label><input id="cLv2aCost"></div>
+                <div class="span-2"><label>天赋 A 效果</label><textarea id="cLv2aEffect"></textarea></div>
+                <div><label>天赋 B 名称</label><input id="cLv2bName"></div>
+                <div><label>天赋 B 消耗</label><input id="cLv2bCost"></div>
+                <div class="span-2"><label>天赋 B 效果</label><textarea id="cLv2bEffect"></textarea></div>
+            </div>
+            <div class="form-subhead">3 级天赋（二选一）</div>
+            <div class="form-grid">
+                <div class="span-2"><label>3 级统一消耗</label><input id="cLv3Cost"></div>
+                <div class="span-2"><label>天赋 A 名称</label><input id="cLv3aName"></div>
+                <div class="span-2"><label>天赋 A 效果</label><textarea id="cLv3aEffect"></textarea></div>
+                <div class="span-2"><label>天赋 B 名称</label><input id="cLv3bName"></div>
+                <div class="span-2"><label>天赋 B 效果</label><textarea id="cLv3bEffect"></textarea></div>
+            </div>
+        </div>
+        <div class="modal-foot">
+            <button type="button" id="delCareer" class="danger">删除职业</button>
+            <span class="spacer"></span>
+            <button type="button" id="closeCareerModal" class="secondary">关闭</button>
+            <button type="button" id="saveCareer" class="success">保存职业</button>
+        </div>
     </div>
-    <div id="cardWrap" class="flex-row"></div>
-</div>
-
-<div id="view-stat" class="view hidden">
-    <div class="panel">
-        <h3>统计</h3>
-        <div id="statText"></div>
-    </div>
-</div>
-
-<!-- 编辑职业弹窗 -->
-<div id="modalCareer" class="modal hidden">
-<div class="modal-content">
-    <h3 id="careerModalTitle">新增职业</h3>
-    <input type="hidden" id="editCareerId">
-    <label>职业名称</label><input id="cName">
-    <label>血量</label><input type="number" id="cHp">
-    <label>装备位描述</label><input id="cEquipSlot">
-    <label>专属建筑名称</label><input id="cBuildingName">
-    <label>建筑消耗&产出说明</label><textarea id="cBuildingDesc"></textarea>
-    <label>初始被动天赋</label><textarea id="cPassive0"></textarea>
-
-    <h4>2级天赋（二选一）消耗</h4>
-    <label>天赋A名称</label><input id="cLv2aName">
-    <label>天赋A效果</label><textarea id="cLv2aEffect"></textarea>
-    <label>天赋A资源消耗</label><input id="cLv2aCost">
-
-    <label>天赋B名称</label><input id="cLv2bName">
-    <label>天赋B效果</label><textarea id="cLv2bEffect"></textarea>
-    <label>天赋B资源消耗</label><input id="cLv2bCost">
-
-    <h4>3级天赋（二选一）统一消耗</h4>
-    <label>3级统一消耗</label><input id="cLv3Cost">
-    <label>天赋A名称</label><input id="cLv3aName">
-    <label>天赋A效果</label><textarea id="cLv3aEffect"></textarea>
-    <label>天赋B名称</label><input id="cLv3bName">
-    <label>天赋B效果</label><textarea id="cLv3bEffect"></textarea>
-
-    <div class="top-bar">
-        <button id="saveCareer" class="success">保存职业</button>
-        <button id="delCareer">删除职业</button>
-        <button id="closeCareerModal" class="secondary">关闭</button>
-    </div>
-</div>
 </div>
 
 <!-- 卡牌编辑弹窗 -->
-<div id="modalCard" class="modal hidden">
-<div class="modal-content">
-    <h3 id="cardModalTitle">新建卡牌</h3>
-    <input type="hidden" id="editCardId">
-    <label>归属职业</label><select id="cardCareerSel"></select>
-    <label>卡牌类型</label><select id="cardTypeSel">
-        <option>行动卡</option>
-        <option>武器</option>
-        <option>护具</option>
-        <option>鞋</option>
-        <option>道具</option>
-        <option>宠物</option>
-    </select>
-    <label>卡牌名称</label><input id="cardName">
-    <label>数量(Xn)</label><input type="number" id="cardCount">
-    <label>消耗</label><input id="cardCost">
-    <label>卡牌效果</label><textarea id="cardEffect"></textarea>
-    <label>备注</label><textarea id="cardNote"></textarea>
-    <div class="top-bar">
-        <button id="saveCard" class="success">保存卡牌</button>
-        <button id="delCard">删除卡牌</button>
-        <button id="closeCardModal" class="secondary">关闭</button>
+<div id="modalCard" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="cardModalTitle">
+    <div class="modal-content">
+        <div class="modal-head">
+            <div>
+                <h3 id="cardModalTitle">新建卡牌</h3>
+                <small id="cardModalSub">选择类型后填写卡面信息</small>
+            </div>
+            <span class="type-badge" id="cardTypeBadge">⚡ 行动卡</span>
+            <button type="button" class="modal-close" id="closeCardX" aria-label="关闭">✕</button>
+        </div>
+        <div class="modal-body">
+            <div class="form-grid">
+                <div><label>归属职业</label><select id="cardCareerSel"></select></div>
+                <div><label>卡牌类型</label><select id="cardTypeSel"></select></div>
+                <div class="span-2"><span class="hint" id="cardTypeHint"></span></div>
+                <div class="span-2"><label>卡牌名称</label><input id="cardName" placeholder="例如：陷阱投放"></div>
+                <div><label>数量（×N）</label><input type="number" id="cardCount"></div>
+                <div><label>消耗</label><input id="cardCost" placeholder="例如：2木1石"></div>
+                <div class="span-2 hidden" id="secretFields">
+                    <label>触发条件（奥秘卡专属）</label>
+                    <input id="cardTrigger" list="triggerPresets" placeholder="例如：当对手进入你 2 格范围内时">
+                    <datalist id="triggerPresets"></datalist>
+                    <span class="hint">奥秘卡背面盖放在场上，不立即生效；当触发条件达成时翻开并结算效果。</span>
+                </div>
+                <div class="span-2"><label>卡牌效果</label><textarea id="cardEffect"></textarea></div>
+                <div class="span-2"><label>备注</label><textarea id="cardNote"></textarea></div>
+            </div>
+        </div>
+        <div class="modal-foot">
+            <button type="button" id="delCard" class="danger">删除卡牌</button>
+            <span class="spacer"></span>
+            <button type="button" id="closeCardModal" class="secondary">关闭</button>
+            <button type="button" id="saveCard" class="success">保存卡牌</button>
+        </div>
     </div>
 </div>
-</div>
+
+<div class="toast-wrap" id="toastWrap"></div>
 
 <script>
-let socket = io();
+let socket = null;
 let appData = null;
+
+/* =====================================================================
+   卡牌类型：全局唯一数据源
+   以后新增卡牌类型只需要在这里加一行，筛选器、编辑器、卡面样式与统计会自动同步
+   ===================================================================== */
+const SECRET_TYPE = "奥秘卡";
+const CARD_TYPES = [
+    {name:"行动卡", group:"主动卡", icon:"⚡", accent:"#c1662f", desc:"消耗一次行动打出，立即结算效果的常规卡牌。"},
+    {name:SECRET_TYPE, group:"主动卡", icon:"🔮", accent:"#6f4bc4", desc:"背面盖放在场上，不立即生效；当触发条件达成时翻开并结算。"},
+    {name:"武器", group:"装备卡", icon:"⚔", accent:"#a8402f", desc:"占用武器位，用于提升攻击或改变攻击方式。"},
+    {name:"护具", group:"装备卡", icon:"🛡", accent:"#3a6a9c", desc:"占用护具位，提供防御、减伤或护盾。"},
+    {name:"鞋", group:"装备卡", icon:"👣", accent:"#3f8a5c", desc:"占用鞋位，影响移动距离与移动方式。"},
+    {name:"道具", group:"装备卡", icon:"🎒", accent:"#b08a3a", desc:"占用道具位，提供各类被动增益。"},
+    {name:"宠物", group:"装备卡", icon:"🐾", accent:"#8a5f8f", desc:"占用宠物位，通常是可独立行动的伙伴。"}
+];
+const CARD_TYPE_MAP = CARD_TYPES.reduce((map,item)=>{ map[item.name] = item; return map; }, {});
+const TRIGGER_PRESETS = [
+    "当对手进入你 2 格范围内时",
+    "当对手对你发起攻击时",
+    "当对手在你的视野内移动时",
+    "当对手进行建造或收获时",
+    "当回合开始时",
+    "当你的生命降至 3 点或以下时"
+];
+
+function getCardType(type){
+    if(CARD_TYPE_MAP[type]) return CARD_TYPE_MAP[type];
+    return {name:type || "未分类", group:"未分类", icon:"🃏", accent:"#8a7a63", desc:"未归类的卡牌类型。"};
+}
+function hexToRgba(hex,alpha){
+    const raw = String(hex || "").replace("#","");
+    const full = raw.length === 3 ? raw.split("").map(c=>c + c).join("") : raw;
+    const num = parseInt(full || "8a7a63",16);
+    return "rgba(" + ((num >> 16) & 255) + ", " + ((num >> 8) & 255) + ", " + (num & 255) + ", " + alpha + ")";
+}
+function styleForType(type){
+    const meta = getCardType(type);
+    return "--card-accent:" + meta.accent + ";--card-accent-soft:" + hexToRgba(meta.accent,.14) + ";--card-accent-line:" + hexToRgba(meta.accent,.45);
+}
+
+/* 卡牌字段兜底：补齐缺失字段，并为旧数据生成稳定 uid（否则旧卡牌无法编辑） */
+function hydrateCard(card,index){
+    const raw = card || {};
+    const out = {...raw};
+    out.uid = raw.uid || ("seed_" + index + "_" + (raw.career || "any") + "_" + (raw.name || "card"));
+    out.career = typeof raw.career === "string" ? raw.career : "";
+    out.type = (typeof raw.type === "string" && raw.type.trim()) ? raw.type.trim() : CARD_TYPES[0].name;
+    out.name = (typeof raw.name === "string" && raw.name.trim()) ? raw.name.trim() : "未命名卡牌";
+    out.count = Number.isFinite(Number(raw.count)) ? Number(raw.count) : 1;
+    out.cost = raw.cost == null ? "" : String(raw.cost);
+    out.effect = typeof raw.effect === "string" ? raw.effect : "";
+    out.note = typeof raw.note === "string" ? raw.note : "";
+    out.trigger = typeof raw.trigger === "string" ? raw.trigger : "";
+    return out;
+}
 
 function normalizeAppData(data){
     const base = data || {};
@@ -571,10 +933,9 @@ function normalizeAppData(data){
         announcement: typeof base.announcement === "string" ? base.announcement : "欢迎来到道途协作工作台，公告栏可以在这里发布当日说明。",
         mapNote: typeof base.mapNote === "string" ? base.mapNote : "六边形地图示意区：这里先作为地图模块占位，后续可扩展成真正的地块编辑。",
         careers: Array.isArray(base.careers) ? base.careers.map(hydrateCareer) : [],
-        cards: Array.isArray(base.cards) ? base.cards : [],
+        cards: Array.isArray(base.cards) ? base.cards.map(hydrateCard) : [],
     };
 }
-
 const careerVisuals = {
     hunter:{
         image:"/assets/roles/hunter.jpg",
@@ -740,352 +1101,584 @@ function hydrateCareer(career){
     return out;
 }
 
-socket.on("connect",()=>{
-    document.getElementById("syncStatus").innerText="🟢已连接云端，多人协同模式";
-})
-socket.on("disconnect",()=>{
-    document.getElementById("syncStatus").innerText="🔴断开连接";
-})
-socket.on("fullData",(remoteData)=>{
-    appData = normalizeAppData(remoteData);
-    renderAll();
-})
-
-function pushCloud(){
-    socket.emit("updateAll",appData);
+/* ============ 通用工具 ============ */
+function esc(value){
+    return String(value == null ? "" : value).replace(/[&<>"']/g, ch => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[ch]));
+}
+function toast(message){
+    const wrap = document.getElementById("toastWrap");
+    if(!wrap) return;
+    const el = document.createElement("div");
+    el.className = "toast";
+    el.innerText = message;
+    wrap.appendChild(el);
+    setTimeout(()=>{
+        el.style.transition = "opacity .25s ease, transform .25s ease";
+        el.style.opacity = "0";
+        el.style.transform = "translateY(6px)";
+        setTimeout(()=>el.remove(), 260);
+    }, 1900);
+}
+function setSyncStatus(state,text){
+    const el = document.getElementById("syncStatus");
+    if(!el) return;
+    el.classList.remove("online","offline");
+    if(state) el.classList.add(state);
+    const label = el.querySelector(".sync-text");
+    if(label) label.innerText = text; else el.innerText = text;
+}
+function emptyState(title,desc){
+    return '<div class="empty-state"><b>' + esc(title) + '</b>' + esc(desc) + '</div>';
 }
 
+/* ============ 弹窗：相对当前视口居中 + 柔和遮罩 ============ */
+function openModal(id){
+    const modal = document.getElementById(id);
+    if(!modal) return;
+    modal.classList.remove("hidden");
+    document.body.classList.add("modal-open");
+    const firstField = modal.querySelector(".modal-body input, .modal-body select, .modal-body textarea");
+    if(firstField) setTimeout(()=>firstField.focus({preventScroll:true}), 90);
+}
+function closeModal(id){
+    const modal = document.getElementById(id);
+    if(modal) modal.classList.add("hidden");
+    if(!document.querySelector(".modal:not(.hidden)")) document.body.classList.remove("modal-open");
+}
+function closeAllModals(){
+    document.querySelectorAll(".modal").forEach(modal=>modal.classList.add("hidden"));
+    document.body.classList.remove("modal-open");
+}
+document.querySelectorAll(".modal").forEach(modal=>{
+    modal.addEventListener("mousedown", event=>{ if(event.target === modal) closeModal(modal.id); });
+});
+document.addEventListener("keydown", event=>{ if(event.key === "Escape") closeAllModals(); });
+
+/* ============ 云端同步 ============ */
+function pushCloud(){
+    if(!socket){ toast("未连接服务器，改动只保存在本地"); return; }
+    socket.emit("updateAll", appData);
+}
+function initRealtime(){
+    if(typeof io !== "function"){
+        setSyncStatus("offline","离线预览模式");
+        appData = normalizeAppData(null);
+        renderAll();
+        return;
+    }
+    socket = io();
+    socket.on("connect", ()=>setSyncStatus("online","已连接云端 · 多人协同"));
+    socket.on("disconnect", ()=>setSyncStatus("offline","连接已断开"));
+    socket.on("fullData", remoteData=>{
+        appData = normalizeAppData(remoteData);
+        renderAll();
+    });
+}
+
+/* ============ 顶部导航切换 ============ */
+const VIEW_IDS = ["overview","careerList","cardLib","stat"];
+function switchView(view){
+    document.querySelectorAll(".tab").forEach(tab=>tab.classList.toggle("active", tab.dataset.view === view));
+    VIEW_IDS.forEach(id=>{
+        const el = document.getElementById("view-" + id);
+        if(el) el.classList.toggle("hidden", id !== view);
+    });
+    renderAll();
+    window.scrollTo({top:0, behavior:"smooth"});
+}
+document.querySelectorAll(".tab").forEach(tab=>{
+    tab.addEventListener("click", ()=>switchView(tab.dataset.view));
+    tab.addEventListener("keydown", event=>{
+        if(event.key === "Enter" || event.key === " "){ event.preventDefault(); switchView(tab.dataset.view); }
+    });
+});
+
+/* ============ 下拉选项：由 CARD_TYPES 自动生成 ============ */
+function buildTypeOptions(){
+    const groups = [];
+    CARD_TYPES.forEach(type=>{
+        let group = groups.find(item=>item.name === type.group);
+        if(!group){ group = {name:type.group, items:[]}; groups.push(group); }
+        group.items.push(type);
+    });
+    const html = groups.map(group =>
+        '<optgroup label="' + esc(group.name) + '">' + group.items.map(type =>
+            '<option value="' + esc(type.name) + '">' + type.icon + ' ' + esc(type.name) + '</option>'
+        ).join("") + '</optgroup>'
+    ).join("");
+    document.getElementById("filterType").innerHTML = '<option value="">全部卡牌类型</option>' + html;
+    document.getElementById("cardTypeSel").innerHTML = html;
+    document.getElementById("triggerPresets").innerHTML = TRIGGER_PRESETS.map(item=>'<option value="' + esc(item) + '"></option>').join("");
+}
+
+/* ============ 公告 / 地图备注 ============ */
 function saveAnnouncementText(){
     if(!appData) return;
     appData.announcement = document.getElementById("announcementText").value;
     pushCloud();
-    renderStatsOnly();
+    syncMetrics();
+    toast("公告已保存");
 }
-
 function saveMapNoteText(){
     if(!appData) return;
     appData.mapNote = document.getElementById("mapNoteText").value;
     pushCloud();
-    renderStatsOnly();
+    syncMetrics();
+    toast("地图备注已保存");
 }
 
-// tab切换
-document.querySelectorAll(".tab").forEach(t=>{
-    t.onclick=()=>{
-        document.querySelectorAll(".tab").forEach(x=>x.classList.remove("active"));
-        t.classList.add("active");
-        const v = t.dataset.view;
-        document.querySelectorAll(".view").forEach(vv=>vv.classList.add("hidden"));
-        document.getElementById("view-"+v).classList.remove("hidden");
-        renderAll();
-    }
-})
-
-// 新增职业按钮
-document.getElementById("btnAddCareer").onclick=()=>openCareerModal(null);
-document.getElementById("closeCareerModal").onclick=()=>document.getElementById("modalCareer").classList.add("hidden");
-document.getElementById("closeCardModal").onclick=()=>document.getElementById("modalCard").classList.add("hidden");
-document.getElementById("saveAnnouncement").onclick=saveAnnouncementText;
-document.getElementById("saveMapNote").onclick=saveMapNoteText;
-
+/* ============ 职业弹窗 ============ */
+let editingCareerId = "";
 function openCareerModal(careerObj){
-    const m = document.getElementById("modalCareer");
-    m.classList.remove("hidden");
-    if(careerObj===null){
-        document.getElementById("careerModalTitle").innerText="➕新增职业";
-        document.getElementById("editCareerId").value="";
-        document.getElementById("cName").value="";
-        document.getElementById("cHp").value="8";
-        document.getElementById("cEquipSlot").value="1武器1护具1鞋1道具";
-        document.getElementById("cBuildingName").value="";
-        document.getElementById("cBuildingDesc").value="";
-        document.getElementById("cPassive0").value="";
-        document.getElementById("cLv2aName").value="";document.getElementById("cLv2aEffect").value="";document.getElementById("cLv2aCost").value="2木3肉";
-        document.getElementById("cLv2bName").value="";document.getElementById("cLv2bEffect").value="";document.getElementById("cLv2bCost").value="2木3肉";
-        document.getElementById("cLv3Cost").value="4金";
-        document.getElementById("cLv3aName").value="";document.getElementById("cLv3aEffect").value="";
-        document.getElementById("cLv3bName").value="";document.getElementById("cLv3bEffect").value="";
+    const isNew = !careerObj;
+    const setValue = (id,value)=>{ document.getElementById(id).value = value == null ? "" : value; };
+    if(isNew){
+        editingCareerId = "";
+        document.getElementById("careerModalTitle").innerText = "新增职业";
+        document.getElementById("careerModalSub").innerText = "填写职业基础数据与天赋树，保存后同步给所有协作者。";
+        setValue("cName","");            setValue("cHp","8");
+        setValue("cEquipSlot","1武器1护具1鞋1道具");
+        setValue("cBuildingName","");    setValue("cBuildingDesc","");   setValue("cPassive0","");
+        setValue("cLv2aName","");        setValue("cLv2aEffect","");     setValue("cLv2aCost","2木3肉");
+        setValue("cLv2bName","");        setValue("cLv2bEffect","");     setValue("cLv2bCost","2木3肉");
+        setValue("cLv3Cost","4金");
+        setValue("cLv3aName","");        setValue("cLv3aEffect","");
+        setValue("cLv3bName","");        setValue("cLv3bEffect","");
     }else{
-        document.getElementById("careerModalTitle").innerText="✏编辑职业："+careerObj.name;
-        document.getElementById("editCareerId").value=careerObj.id;
-        document.getElementById("cName").value=careerObj.name;
-        document.getElementById("cHp").value=careerObj.hp;
-        document.getElementById("cEquipSlot").value=careerObj.equipSlot;
-        document.getElementById("cBuildingName").value=careerObj.buildingName;
-        document.getElementById("cBuildingDesc").value=careerObj.buildingDesc;
-        document.getElementById("cPassive0").value=careerObj.passive0;
-        document.getElementById("cLv2aName").value=careerObj.lv2aName;document.getElementById("cLv2aEffect").value=careerObj.lv2aEffect;document.getElementById("cLv2aCost").value=careerObj.lv2aCost;
-        document.getElementById("cLv2bName").value=careerObj.lv2bName;document.getElementById("cLv2bEffect").value=careerObj.lv2bEffect;document.getElementById("cLv2bCost").value=careerObj.lv2bCost;
-        document.getElementById("cLv3Cost").value=careerObj.lv3Cost;
-        document.getElementById("cLv3aName").value=careerObj.lv3aName;document.getElementById("cLv3aEffect").value=careerObj.lv3aEffect;
-        document.getElementById("cLv3bName").value=careerObj.lv3bName;document.getElementById("cLv3bEffect").value=careerObj.lv3bEffect;
+        editingCareerId = careerObj.id;
+        document.getElementById("careerModalTitle").innerText = "编辑职业 · " + careerObj.name;
+        document.getElementById("careerModalSub").innerText = "修改后会自动同步到云端，其他协作者会立刻看到。";
+        setValue("cName",careerObj.name);        setValue("cHp",careerObj.hp);
+        setValue("cEquipSlot",careerObj.equipSlot);
+        setValue("cBuildingName",careerObj.buildingName); setValue("cBuildingDesc",careerObj.buildingDesc);
+        setValue("cPassive0",careerObj.passive0);
+        setValue("cLv2aName",careerObj.lv2aName); setValue("cLv2aEffect",careerObj.lv2aEffect); setValue("cLv2aCost",careerObj.lv2aCost);
+        setValue("cLv2bName",careerObj.lv2bName); setValue("cLv2bEffect",careerObj.lv2bEffect); setValue("cLv2bCost",careerObj.lv2bCost);
+        setValue("cLv3Cost",careerObj.lv3Cost);
+        setValue("cLv3aName",careerObj.lv3aName); setValue("cLv3aEffect",careerObj.lv3aEffect);
+        setValue("cLv3bName",careerObj.lv3bName); setValue("cLv3bEffect",careerObj.lv3bEffect);
     }
+    document.getElementById("delCareer").classList.toggle("hidden", isNew);
+    openModal("modalCareer");
 }
-
-document.getElementById("saveCareer").onclick=()=>{
-    const editId = document.getElementById("editCareerId").value;
-    const newId = editId||("career_"+Date.now());
+function saveCareerForm(){
+    if(!appData) return;
+    const editId = editingCareerId;
+    const val = id=>document.getElementById(id).value.trim();
     const career = {
-        id:newId,
-        name:document.getElementById("cName").value.trim(),
-        hp:Number(document.getElementById("cHp").value),
-        equipSlot:document.getElementById("cEquipSlot").value.trim(),
-        buildingName:document.getElementById("cBuildingName").value.trim(),
-        buildingDesc:document.getElementById("cBuildingDesc").value.trim(),
-        passive0:document.getElementById("cPassive0").value.trim(),
-        lv2aName:document.getElementById("cLv2aName").value.trim(),
-        lv2aEffect:document.getElementById("cLv2aEffect").value.trim(),
-        lv2aCost:document.getElementById("cLv2aCost").value.trim(),
-        lv2bName:document.getElementById("cLv2bName").value.trim(),
-        lv2bEffect:document.getElementById("cLv2bEffect").value.trim(),
-        lv2bCost:document.getElementById("cLv2bCost").value.trim(),
-        lv3Cost:document.getElementById("cLv3Cost").value.trim(),
-        lv3aName:document.getElementById("cLv3aName").value.trim(),
-        lv3aEffect:document.getElementById("cLv3aEffect").value.trim(),
-        lv3bName:document.getElementById("cLv3bName").value.trim(),
-        lv3bEffect:document.getElementById("cLv3bEffect").value.trim(),
-    }
-    if(!career.name){alert("职业名称不能为空");return;}
+        id: editId || ("career_" + Date.now()),
+        name: val("cName"),
+        hp: Number(document.getElementById("cHp").value) || 0,
+        equipSlot: val("cEquipSlot"),
+        buildingName: val("cBuildingName"),
+        buildingDesc: val("cBuildingDesc"),
+        passive0: val("cPassive0"),
+        lv2aName: val("cLv2aName"),
+        lv2aEffect: val("cLv2aEffect"),
+        lv2aCost: val("cLv2aCost"),
+        lv2bName: val("cLv2bName"),
+        lv2bEffect: val("cLv2bEffect"),
+        lv2bCost: val("cLv2bCost"),
+        lv3Cost: val("cLv3Cost"),
+        lv3aName: val("cLv3aName"),
+        lv3aEffect: val("cLv3aEffect"),
+        lv3bName: val("cLv3bName"),
+        lv3bEffect: val("cLv3bEffect")
+    };
+    if(!career.name){ alert("职业名称不能为空"); return; }
     const finalCareer = hydrateCareer(career);
     if(editId){
-        const idx = appData.careers.findIndex(x=>x.id===editId);
-        appData.careers[idx]=finalCareer;
+        const index = appData.careers.findIndex(item=>item.id === editId);
+        if(index > -1) appData.careers[index] = finalCareer; else appData.careers.push(finalCareer);
     }else{
         appData.careers.push(finalCareer);
     }
     pushCloud();
-    document.getElementById("modalCareer").classList.add("hidden");
+    closeModal("modalCareer");
     renderAll();
+    toast(editId ? "职业已更新" : "职业已新增");
 }
-
-document.getElementById("delCareer").onclick=()=>{
-    const editId = document.getElementById("editCareerId").value;
-    if(!editId) return;
-    if(!confirm("确定删除该职业？该职业下卡牌不会自动删除，请手动处理卡牌归属。")) return;
-    appData.careers = appData.careers.filter(c=>c.id!==editId);
+function deleteCareer(){
+    if(!editingCareerId) return;
+    if(!confirm("确定删除该职业？该职业下的卡牌不会自动删除，请手动调整卡牌归属。")) return;
+    appData.careers = appData.careers.filter(career=>career.id !== editingCareerId);
+    editingCareerId = "";
     pushCloud();
-    document.getElementById("modalCareer").classList.add("hidden");
+    closeModal("modalCareer");
     renderAll();
+    toast("职业已删除");
 }
 
-//卡牌
-document.getElementById("btnNewCard").onclick=()=>openCardModal(null);
+/* ============ 卡牌弹窗 ============ */
+let editingCardUid = "";
 function openCardModal(cardObj){
-    const m = document.getElementById("modalCard");
-    m.classList.remove("hidden");
-    const sel = document.getElementById("cardCareerSel");
-    sel.innerHTML="";
-    appData.careers.forEach(c=>{
-        const opt = document.createElement("option");opt.value=c.id;opt.innerText=c.name;sel.appendChild(opt);
-    })
-    if(cardObj===null){
-        document.getElementById("cardModalTitle").innerText="🃏新建卡牌";
-        document.getElementById("editCardId").value="";
-        document.getElementById("cardName").value="";
-        document.getElementById("cardCount").value=3;
-        document.getElementById("cardCost").value="";
-        document.getElementById("cardEffect").value="";
-        document.getElementById("cardNote").value="";
+    if(!appData) return;
+    const isNew = !cardObj;
+    const careerSel = document.getElementById("cardCareerSel");
+    careerSel.innerHTML = '<option value="">（未指定职业）</option>' + appData.careers.map(career=>'<option value="' + esc(career.id) + '">' + esc(career.name) + '</option>').join("");
+    const typeSel = document.getElementById("cardTypeSel");
+    if(cardObj && !CARD_TYPE_MAP[cardObj.type] && !Array.from(typeSel.options).some(opt=>opt.value === cardObj.type)) typeSel.appendChild(new Option(cardObj.type, cardObj.type));
+    if(isNew){
+        editingCardUid = "";
+        document.getElementById("cardModalTitle").innerText = "新建卡牌";
+        document.getElementById("cardModalSub").innerText = "选择卡牌类型后填写卡面信息";
+        careerSel.value = "";
+        typeSel.value = CARD_TYPES[0].name;
+        document.getElementById("cardName").value = "";
+        document.getElementById("cardCount").value = 3;
+        document.getElementById("cardCost").value = "";
+        document.getElementById("cardTrigger").value = "";
+        document.getElementById("cardEffect").value = "";
+        document.getElementById("cardNote").value = "";
     }else{
-        document.getElementById("cardModalTitle").innerText="✏编辑卡牌："+cardObj.name;
-        document.getElementById("editCardId").value=cardObj.uid;
-        document.getElementById("cardCareerSel").value=cardObj.career;
-        document.getElementById("cardTypeSel").value=cardObj.type;
-        document.getElementById("cardName").value=cardObj.name;
-        document.getElementById("cardCount").value=cardObj.count;
-        document.getElementById("cardCost").value=cardObj.cost;
-        document.getElementById("cardEffect").value=cardObj.effect;
-        document.getElementById("cardNote").value=cardObj.note;
+        editingCardUid = cardObj.uid;
+        document.getElementById("cardModalTitle").innerText = "编辑卡牌 · " + cardObj.name;
+        document.getElementById("cardModalSub").innerText = "修改后会自动同步到云端";
+        careerSel.value = cardObj.career || "";
+        typeSel.value = cardObj.type;
+        document.getElementById("cardName").value = cardObj.name;
+        document.getElementById("cardCount").value = cardObj.count;
+        document.getElementById("cardCost").value = cardObj.cost;
+        document.getElementById("cardTrigger").value = cardObj.trigger || "";
+        document.getElementById("cardEffect").value = cardObj.effect;
+        document.getElementById("cardNote").value = cardObj.note;
     }
+    document.getElementById("delCard").classList.toggle("hidden", isNew);
+    syncCardTypeUI();
+    openModal("modalCard");
 }
-
-document.getElementById("saveCard").onclick=()=>{
-    const editUid = document.getElementById("editCardId").value;
+function syncCardTypeUI(){
+    const type = document.getElementById("cardTypeSel").value;
+    const meta = getCardType(type);
+    document.getElementById("secretFields").classList.toggle("hidden", type !== SECRET_TYPE);
+    const badge = document.getElementById("cardTypeBadge");
+    badge.innerText = meta.icon + " " + meta.name;
+    badge.setAttribute("style", styleForType(type));
+    document.getElementById("cardTypeHint").innerText = meta.desc;
+}
+function saveCardForm(){
+    if(!appData) return;
+    const editUid = editingCardUid;
     const card = {
-        uid:editUid||("card_"+Date.now()),
-        career:document.getElementById("cardCareerSel").value,
-        type:document.getElementById("cardTypeSel").value,
-        name:document.getElementById("cardName").value.trim(),
-        count:Number(document.getElementById("cardCount").value),
-        cost:document.getElementById("cardCost").value.trim(),
-        effect:document.getElementById("cardEffect").value.trim(),
-        note:document.getElementById("cardNote").value.trim()
-    }
-    if(!card.name){alert("卡牌名称不能为空");return;}
+        uid: editUid || ("card_" + Date.now()),
+        career: document.getElementById("cardCareerSel").value,
+        type: document.getElementById("cardTypeSel").value,
+        name: document.getElementById("cardName").value.trim(),
+        count: Number(document.getElementById("cardCount").value) || 0,
+        cost: document.getElementById("cardCost").value.trim(),
+        trigger: document.getElementById("cardTrigger").value.trim(),
+        effect: document.getElementById("cardEffect").value.trim(),
+        note: document.getElementById("cardNote").value.trim()
+    };
+    if(!card.name){ alert("卡牌名称不能为空"); return; }
     if(editUid){
-        const idx = appData.cards.findIndex(x=>x.uid===editUid);
-        appData.cards[idx]=card;
+        const index = appData.cards.findIndex(item=>item.uid === editUid);
+        if(index > -1) appData.cards[index] = card; else appData.cards.push(card);
     }else{
         appData.cards.push(card);
     }
     pushCloud();
-    document.getElementById("modalCard").classList.add("hidden");
+    closeModal("modalCard");
     renderAll();
+    toast(editUid ? "卡牌已更新" : "卡牌已新增");
 }
-document.getElementById("delCard").onclick=()=>{
-    const uid = document.getElementById("editCardId").value;
-    if(!uid) return;
-    if(!confirm("确定删除卡牌？")) return;
-    appData.cards = appData.cards.filter(c=>c.uid!==uid);
+function deleteCard(){
+    if(!editingCardUid) return;
+    if(!confirm("确定删除这张卡牌？")) return;
+    appData.cards = appData.cards.filter(card=>card.uid !== editingCardUid);
+    editingCardUid = "";
     pushCloud();
-    document.getElementById("modalCard").classList.add("hidden");
+    closeModal("modalCard");
     renderAll();
+    toast("卡牌已删除");
 }
-
-//导出导入
-document.getElementById("btnExport").onclick=()=>{
+/* ============ 导出 / 导入 ============ */
+document.getElementById("btnExport").onclick = ()=>{
     const blob = new Blob([JSON.stringify(appData,null,2)],{type:"application/json"});
-    const a = document.createElement("a");
-    a.href=URL.createObjectURL(blob);
-    a.download="道途项目备份.json";
-    a.click();
-}
-document.getElementById("btnImport").onclick=()=>document.getElementById("importFile").click();
-document.getElementById("importFile").onchange=async (e)=>{
-    const f = e.target.files[0];
-    const txt = await f.text();
-    const imp = JSON.parse(txt);
-    if(!confirm("导入会覆盖当前全部数据，确认？")) return;
-    appData = normalizeAppData(imp);
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(blob);
+    link.download = "道途项目备份.json";
+    link.click();
+    URL.revokeObjectURL(link.href);
+    toast("已导出 JSON 备份");
+};
+document.getElementById("btnImport").onclick = ()=>document.getElementById("importFile").click();
+document.getElementById("importFile").onchange = async event=>{
+    const file = event.target.files[0];
+    if(!file) return;
+    let imported = null;
+    try{
+        imported = JSON.parse(await file.text());
+    }catch(error){
+        alert("JSON 解析失败，请检查文件格式是否正确。");
+        event.target.value = "";
+        return;
+    }
+    if(!confirm("导入会覆盖当前全部数据，确认继续？")){
+        event.target.value = "";
+        return;
+    }
+    appData = normalizeAppData(imported);
     pushCloud();
     renderAll();
+    event.target.value = "";
+    toast("数据已导入");
+};
+
+/* ============ 渲染：总览 ============ */
+function syncMetrics(){
+    if(!appData) return;
+    const totalCopies = appData.cards.reduce((sum,card)=>sum + (Number(card.count) || 0), 0);
+    const secretCount = appData.cards.filter(card=>card.type === SECRET_TYPE).length;
+    const setText = (id,value)=>{ const el = document.getElementById(id); if(el) el.innerText = value; };
+    setText("metricCareer", appData.careers.length);
+    setText("metricCard", appData.cards.length);
+    setText("metricCardTotal", totalCopies);
+    setText("metricSecret", secretCount);
+    setText("metricAnnouncement", (appData.announcement || "").length);
+    setText("metricMap", (appData.mapNote || "").length);
+}
+function renderOverview(){
+    if(!appData) return;
+    const announcement = document.getElementById("announcementText");
+    const mapNote = document.getElementById("mapNoteText");
+    if(announcement && document.activeElement !== announcement) announcement.value = appData.announcement || "";
+    if(mapNote && document.activeElement !== mapNote) mapNote.value = appData.mapNote || "";
+    syncMetrics();
 }
 
-//渲染全部
+/* ============ 渲染：职业图鉴 ============ */
+function renderCareerList(){
+    const wrap = document.getElementById("careerWrap");
+    if(!wrap) return;
+    if(!appData.careers.length){
+        wrap.innerHTML = emptyState("还没有职业","点击「新增职业」创建第一个角色，之后就能为它设计卡牌了。");
+        return;
+    }
+    wrap.innerHTML = appData.careers.map(career=>{
+        const profile = career._visual || getCareerVisual(career);
+        const portrait = profile.image
+            ? '<img src="' + esc(profile.image) + '" alt="' + esc(career.name) + '" loading="lazy" onerror="this.onerror=null;this.style.display=\'none\';this.parentElement.classList.add(\'no-image\')">'
+            : "";
+        return `
+        <article class="panel career-card" data-career-id="${esc(career.id)}">
+            <div class="career-portrait${profile.image ? "" : " no-image"}" data-initial="${esc(String(career.name || "？").slice(0,1))}">
+                ${portrait}
+                <div class="career-rank">${esc(profile.rank || "1")}</div>
+            </div>
+            <div class="career-body">
+                <div class="career-head">
+                    <div>
+                        <h4>${esc(career.name)}</h4>
+                        <div class="career-subtitle">${esc(profile.subtitle || "")}</div>
+                    </div>
+                    <div class="career-rolechip">${esc(profile.role || "职业")}</div>
+                </div>
+                <div class="career-summary">${esc(profile.summary || "暂无简介")}</div>
+                <div class="career-chips">
+                    ${(profile.keywords || []).map(word=>'<span class="career-chip">' + esc(word) + '</span>').join("")}
+                </div>
+                <div class="career-facts">
+                    <div class="fact"><b>血量</b><span>${esc(career.hp)}</span></div>
+                    <div class="fact"><b>装备位</b><span>${esc(career.equipSlot || "未填写")}</span></div>
+                    <div class="fact"><b>建筑</b><span>${esc(career.buildingName || "未填写")}</span></div>
+                </div>
+                <details class="career-details">
+                    <summary>完整设定</summary>
+                    <div class="tree-node"><b>职业简介</b><br>${esc(profile.profile || profile.summary || "未填写")}</div>
+                    <div class="tree-node"><b>专属建筑</b><br>${esc(career.buildingName || "未填写")}<br>${esc(career.buildingDesc || "未填写")}</div>
+                    <div class="tree-node"><b>初始被动</b><br>${esc(career.passive0 || "未填写")}</div>
+                    <div class="tree-node"><b>2级天赋A【${esc(career.lv2aName || "未命名")}】消耗：${esc(career.lv2aCost || "-")}</b><br>${esc(career.lv2aEffect || "无效果")}</div>
+                    <div class="tree-node"><b>2级天赋B【${esc(career.lv2bName || "未命名")}】消耗：${esc(career.lv2bCost || "-")}</b><br>${esc(career.lv2bEffect || "无效果")}</div>
+                    <div class="tree-node"><b>3级统一消耗：${esc(career.lv3Cost || "-")}</b></div>
+                    <div class="tree-node"><b>3级天赋A【${esc(career.lv3aName || "未命名")}】</b><br>${esc(career.lv3aEffect || "无效果")}</div>
+                    <div class="tree-node"><b>3级天赋B【${esc(career.lv3bName || "未命名")}】</b><br>${esc(career.lv3bEffect || "无效果")}</div>
+                </details>
+                <button type="button" class="secondary career-action js-edit-career">编辑职业</button>
+            </div>
+        </article>`;
+    }).join("");
+    wrap.querySelectorAll(".js-edit-career").forEach(button=>{
+        button.onclick = ()=>{
+            const host = button.closest("[data-career-id]");
+            const target = appData.careers.find(career=>career.id === (host ? host.dataset.careerId : ""));
+            if(target) openCareerModal(target);
+        };
+    });
+}
+
+/* ============ 渲染：卡牌库 ============ */
+function renderCardFilterSel(){
+    const select = document.getElementById("filterCareer");
+    if(!select) return;
+    const previous = select.value;
+    select.innerHTML = '<option value="">全部职业</option>' + appData.careers.map(career=>'<option value="' + esc(career.id) + '">' + esc(career.name) + '</option>').join("");
+    if(appData.careers.some(career=>career.id === previous)) select.value = previous;
+}
+function renderTypeLegend(){
+    const wrap = document.getElementById("typeLegend");
+    if(!wrap) return;
+    const current = document.getElementById("filterType").value;
+    const dot = accent=>'<span style="width:8px;height:8px;border-radius:50%;background:' + accent + ';display:inline-block"></span>';
+    const chips = ['<span class="legend-chip ' + (current ? "" : "active") + '" data-type="">全部<b>' + appData.cards.length + '</b></span>'];
+    CARD_TYPES.forEach(type=>{
+        const count = appData.cards.filter(card=>card.type === type.name).length;
+        chips.push('<span class="legend-chip ' + (current === type.name ? "active" : "") + '" data-type="' + esc(type.name) + '">' + type.icon + ' ' + esc(type.name) + dot(type.accent) + '<b>' + count + '</b></span>');
+    });
+    wrap.innerHTML = chips.join("");
+    wrap.querySelectorAll(".legend-chip").forEach(chip=>{
+        chip.onclick = ()=>{
+            document.getElementById("filterType").value = chip.dataset.type || "";
+            renderTypeLegend();
+            renderCardList();
+        };
+    });
+}
+function cardTile(card){
+    const meta = getCardType(card.type);
+    const career = appData.careers.find(item=>item.id === card.career);
+    const isSecret = card.type === SECRET_TYPE;
+    return `
+    <article class="card-item${isSecret ? " secret" : ""}" style="${styleForType(card.type)}" data-card-uid="${esc(card.uid)}" tabindex="0" role="button" aria-label="编辑卡牌 ${esc(card.name)}">
+        <div class="card-top">
+            <span class="type-badge">${meta.icon} ${esc(card.type)}</span>
+            <span class="count-chip">×${esc(card.count)}</span>
+        </div>
+        <h4 class="card-name">${esc(card.name)}</h4>
+        <div class="card-meta">
+            <span class="meta-item">🧭 ${esc(career ? career.name : "未指定职业")}</span>
+            <span class="meta-item">💠 ${esc(card.cost || "无消耗")}</span>
+        </div>
+        ${isSecret ? '<div class="secret-trigger">🔮 触发：' + esc(card.trigger || "未填写触发条件") + '</div>' : ""}
+        <p class="card-effect">${esc(card.effect || "暂无效果描述")}</p>
+        ${card.note ? '<p class="card-note">备注：' + esc(card.note) + '</p>' : ""}
+    </article>`;
+}
+function renderCardList(){
+    const wrap = document.getElementById("cardWrap");
+    if(!wrap) return;
+    const filterCareer = document.getElementById("filterCareer").value;
+    const filterType = document.getElementById("filterType").value;
+    const keyword = document.getElementById("searchCard").value.trim().toLowerCase();
+    let list = appData.cards;
+    if(filterCareer) list = list.filter(card=>card.career === filterCareer);
+    if(filterType) list = list.filter(card=>card.type === filterType);
+    if(keyword){
+        list = list.filter(card=>[card.name,card.effect,card.cost,card.note,card.type,card.trigger]
+            .filter(Boolean).join(" ").toLowerCase().includes(keyword));
+    }
+    const countText = document.getElementById("cardCountText");
+    if(countText) countText.innerText = list.length + " / " + appData.cards.length + " 张";
+    if(!list.length){
+        wrap.innerHTML = emptyState("这里还没有卡牌", appData.cards.length ? "试试调整筛选条件，或者清空搜索关键词。" : "点击右上角「新建卡牌」开始设计第一张卡。");
+        return;
+    }
+    wrap.innerHTML = list.map(card=>cardTile(card)).join("");
+    wrap.querySelectorAll("[data-card-uid]").forEach((tile,index)=>{
+        const card = list[index];
+        if(!card) return;
+        const open = ()=>openCardModal(card);
+        tile.onclick = open;
+        tile.onkeydown = event=>{
+            if(event.key === "Enter" || event.key === " "){ event.preventDefault(); open(); }
+        };
+    });
+}
+
+/* ============ 渲染：统计看板 ============ */
+function barRows(items){
+    const max = Math.max(1, ...items.map(item=>item.value));
+    return items.map(item=>`
+        <div class="bar-row">
+            <span class="bar-label">${item.icon ? item.icon + " " : ""}${esc(item.label)}</span>
+            <span class="bar"><i style="width:${Math.round(item.value / max * 100)}%;--bar-accent:${item.accent || "#b08a3a"}"></i></span>
+            <span class="bar-value">${item.value}</span>
+        </div>`).join("");
+}
+function renderStat(){
+    if(!appData) return;
+    const cards = appData.cards;
+    const totalCopies = cards.reduce((sum,card)=>sum + (Number(card.count) || 0), 0);
+    const secretCards = cards.filter(card=>card.type === SECRET_TYPE);
+    const secretCopies = secretCards.reduce((sum,card)=>sum + (Number(card.count) || 0), 0);
+    const kpis = [
+        {label:"职业总数", value:appData.careers.length, unit:"个"},
+        {label:"卡牌条目", value:cards.length, unit:"条"},
+        {label:"卡牌总张数", value:totalCopies, unit:"张"},
+        {label:"奥秘卡张数", value:secretCopies, unit:"张"}
+    ];
+    document.getElementById("statKpis").innerHTML = kpis.map(item=>
+        '<div class="stat-card"><strong>' + item.value + '<em>' + item.unit + '</em></strong><span>' + item.label + '</span></div>'
+    ).join("");
+
+    const typeCounts = {};
+    cards.forEach(card=>{ typeCounts[card.type] = (typeCounts[card.type] || 0) + 1; });
+    const typeItems = CARD_TYPES.map(type=>({label:type.name, icon:type.icon, accent:type.accent, value:typeCounts[type.name] || 0}));
+    Object.keys(typeCounts).filter(name=>!CARD_TYPE_MAP[name]).forEach(name=>{
+        const meta = getCardType(name);
+        typeItems.push({label:meta.name, icon:meta.icon, accent:meta.accent, value:typeCounts[name]});
+    });
+    document.getElementById("statTypes").innerHTML = barRows(typeItems);
+
+    const careerItems = appData.careers.map(career=>({
+        label: career.name,
+        icon: "🎲",
+        accent: "#8a6428",
+        value: cards.filter(card=>card.career === career.id).length
+    }));
+    const orphanCount = cards.filter(card=>!appData.careers.some(career=>career.id === card.career)).length;
+    if(orphanCount) careerItems.push({label:"未指定职业", icon:"❔", accent:"#8a7a63", value:orphanCount});
+    document.getElementById("statCareers").innerHTML = careerItems.length
+        ? barRows(careerItems)
+        : emptyState("暂无数据","创建职业与卡牌后，这里会显示分布情况。");
+
+    document.getElementById("statSecrets").innerHTML = secretCards.length
+        ? secretCards.map(card=>{
+            const career = appData.careers.find(item=>item.id === card.career);
+            return '<div class="secret-row">🔮<div><b>' + esc(card.name) + '</b> <span>· ' + esc(career ? career.name : "未指定职业") + ' · ×' + esc(card.count) + '</span><br><span>触发：' + esc(card.trigger || "未填写触发条件") + '</span></div></div>';
+        }).join("")
+        : emptyState("还没有奥秘卡","在卡牌库里把类型选为「奥秘卡」，就能记录盖放条件与触发时机。");
+}
+
+/* ============ 渲染入口 ============ */
 function renderAll(){
     if(!appData) return;
     renderOverview();
     renderCareerList();
     renderCardFilterSel();
+    renderTypeLegend();
     renderCardList();
     renderStat();
 }
 
-function renderOverview(){
-    const announcement = document.getElementById("announcementText");
-    const mapNote = document.getElementById("mapNoteText");
-    if(announcement && document.activeElement !== announcement){
-        announcement.value = appData.announcement || "";
-    }
-    if(mapNote && document.activeElement !== mapNote){
-        mapNote.value = appData.mapNote || "";
-    }
-    document.getElementById("metricCareer").innerText = appData.careers.length;
-    document.getElementById("metricCard").innerText = appData.cards.length;
-    document.getElementById("metricAnnouncement").innerText = (appData.announcement || "").length;
-    document.getElementById("metricMap").innerText = (appData.mapNote || "").length;
-}
-
-function renderCareerList(){
-    const wrap = document.getElementById("careerWrap");
-    wrap.innerHTML="";
-    appData.careers.forEach(c=>{
-        const profile = c._visual || getCareerVisual(c);
-        const div = document.createElement("div");
-        div.className="panel career-card";
-        div.innerHTML=`
-        <div class="career-portrait">
-            <img src="${profile.image}" alt="${c.name}" loading="lazy" onerror="this.onerror=null;this.style.display='none';this.parentElement.style.background='linear-gradient(180deg,#f5e7c5,#dcc28c)'">
-            <div class="career-rank">${profile.rank||"1"}</div>
-        </div>
-        <div class="career-body">
-            <div class="career-head">
-                <div>
-                    <h4>${c.name}</h4>
-                    <div class="career-subtitle">${profile.subtitle||""}</div>
-                </div>
-                <div class="career-rolechip">${profile.role||"职业"}</div>
-            </div>
-            <div class="career-summary">${profile.summary||"暂无简介"}</div>
-            <div class="career-chips">
-                ${(profile.keywords||[]).map(k=>`<span class="career-chip">${k}</span>`).join("")}
-            </div>
-            <div class="career-facts">
-                <div class="fact"><b>血量</b><span>${c.hp}</span></div>
-                <div class="fact"><b>装备位</b><span>${c.equipSlot}</span></div>
-                <div class="fact"><b>建筑</b><span>${c.buildingName||"未填写"}</span></div>
-            </div>
-            <details class="career-details">
-                <summary>完整设定</summary>
-                <div class="tree-node"><b>职业简介</b><br>${profile.profile||profile.summary||"未填写"}</div>
-                <div class="tree-node"><b>专属建筑</b><br>${c.buildingName||"未填写"}<br>${c.buildingDesc||"未填写"}</div>
-                <div class="tree-node"><b>初始被动</b><br>${c.passive0||"未填写"}</div>
-                <div class="tree-node"><b>2级天赋A【${c.lv2aName||"未命名"}】消耗：${c.lv2aCost||"-"}</b><br>${c.lv2aEffect||"无效果"}</div>
-                <div class="tree-node"><b>2级天赋B【${c.lv2bName||"未命名"}】消耗：${c.lv2bCost||"-"}</b><br>${c.lv2bEffect||"无效果"}</div>
-                <div class="tree-node"><b>3级统一消耗：${c.lv3Cost||"-"}</b></div>
-                <div class="tree-node"><b>3级天赋A【${c.lv3aName||"未命名"}】</b><br>${c.lv3aEffect||"无效果"}</div>
-                <div class="tree-node"><b>3级天赋B【${c.lv3bName||"未命名"}】</b><br>${c.lv3bEffect||"无效果"}</div>
-            </details>
-            <button class="secondary career-action">编辑职业</button>
-        </div>
-        `;
-        div.querySelector("button").onclick=()=>openCareerModal(c);
-        wrap.appendChild(div);
-    })
-}
-
-function renderCardFilterSel(){
-    const s = document.getElementById("filterCareer");
-    s.innerHTML="<option value=''>全部职业</option>";
-    appData.careers.forEach(c=>{
-        const o = document.createElement("option");o.value=c.id;o.innerText=c.name;s.appendChild(o);
-    })
-    document.getElementById("cardCareerSel").innerHTML=s.innerHTML;
-}
-
-function renderCardList(){
-    const wrap = document.getElementById("cardWrap");wrap.innerHTML="";
-    const filterCareer = document.getElementById("filterCareer").value;
-    const filterType = document.getElementById("filterType").value;
-    const kw = document.getElementById("searchCard").value.toLowerCase();
-    let list = appData.cards;
-    if(filterCareer) list=list.filter(c=>c.career===filterCareer);
-    if(filterType) list=list.filter(c=>c.type===filterType);
-    if(kw) list=list.filter(c=>c.name.toLowerCase().includes(kw)||c.effect.toLowerCase().includes(kw));
-    list.forEach(card=>{
-        const ca = document.createElement("div");
-        ca.className="card-item";
-        const careerObj = appData.careers.find(x=>x.id===card.career);
-        ca.innerHTML=`
-        <b>${card.name}</b> <small>×${card.count}</small>
-        <br><small>${careerObj?.name||"未知职业"}｜${card.type}</small>
-        <p>消耗：${card.cost||"无"}</p>
-        <p style="font-size:12px;">${card.effect.slice(0,120)}${card.effect.length>120?"…":""}</p>
-        `;
-        ca.onclick=()=>openCardModal(card);
-        wrap.appendChild(ca);
-    })
-}
-
-["filterCareer","filterType","searchCard"].forEach(id=>{
-    document.getElementById(id).oninput=renderCardList;
-})
-
-function renderStat(){
-    const t = document.getElementById("statText");
-    t.innerHTML=`
-职业总数：${appData.careers.length}<br>
-卡牌总数：${appData.cards.length}<br>
-公告字数：${(appData.announcement||"").length}<br>
-地图备注字数：${(appData.mapNote||"").length}<br>
-`;
-}
-
-function renderStatsOnly(){
-    if(!appData) return;
-    document.getElementById("metricCareer").innerText = appData.careers.length;
-    document.getElementById("metricCard").innerText = appData.cards.length;
-    document.getElementById("metricAnnouncement").innerText = (appData.announcement || "").length;
-    document.getElementById("metricMap").innerText = (appData.mapNote || "").length;
-    renderStat();
-}
-
-document.getElementById("announcementText").addEventListener("input",()=>{
+/* ============ 事件绑定 ============ */
+document.getElementById("btnAddCareer").onclick = ()=>openCareerModal(null);
+document.getElementById("btnAddCareerTop").onclick = ()=>openCareerModal(null);
+document.getElementById("btnNewCard").onclick = ()=>openCardModal(null);
+document.getElementById("closeCareerModal").onclick = ()=>closeModal("modalCareer");
+document.getElementById("closeCareerX").onclick = ()=>closeModal("modalCareer");
+document.getElementById("closeCardModal").onclick = ()=>closeModal("modalCard");
+document.getElementById("closeCardX").onclick = ()=>closeModal("modalCard");
+document.getElementById("saveAnnouncement").onclick = saveAnnouncementText;
+document.getElementById("saveMapNote").onclick = saveMapNoteText;
+document.getElementById("saveCareer").onclick = saveCareerForm;
+document.getElementById("delCareer").onclick = deleteCareer;
+document.getElementById("saveCard").onclick = saveCardForm;
+document.getElementById("delCard").onclick = deleteCard;
+document.getElementById("cardTypeSel").onchange = syncCardTypeUI;
+document.getElementById("filterCareer").oninput = renderCardList;
+document.getElementById("filterType").oninput = ()=>{ renderTypeLegend(); renderCardList(); };
+document.getElementById("searchCard").oninput = renderCardList;
+document.getElementById("announcementText").addEventListener("input", ()=>{
     document.getElementById("metricAnnouncement").innerText = document.getElementById("announcementText").value.length;
 });
-document.getElementById("mapNoteText").addEventListener("input",()=>{
+document.getElementById("mapNoteText").addEventListener("input", ()=>{
     document.getElementById("metricMap").innerText = document.getElementById("mapNoteText").value.length;
 });
+
+/* ============ 启动 ============ */
+buildTypeOptions();
+initRealtime();
 </script>
 </body>
 </html>
