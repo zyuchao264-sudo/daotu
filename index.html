@@ -624,6 +624,7 @@ input[type="file"]{padding:8px}
     html{scroll-behavior:auto}
     *,*::before,*::after{animation-duration:.001ms !important;transition-duration:.001ms !important}
 }
+</style>
 <script src="/socket.io/socket.io.js"></script>
 </head>
 <body>
@@ -1313,6 +1314,7 @@ function deleteCareer(){
 let editingCardUid = "";
 function openCardModal(cardObj){
     if(!appData) return;
+    if(cardObj && !cardObj.uid) cardObj.uid = hydrateCard(cardObj, appData.cards.indexOf(cardObj)).uid;
     const isNew = !cardObj;
     const careerSel = document.getElementById("cardCareerSel");
     careerSel.innerHTML = '<option value="">（未指定职业）</option>' + appData.careers.map(career=>'<option value="' + esc(career.id) + '">' + esc(career.name) + '</option>').join("");
