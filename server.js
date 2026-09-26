@@ -1,6 +1,9 @@
 const express = require('express');
 const http = require('http');
+const fs = require('fs');
+const path = require('path');
 const { Server } = require('socket.io');
+const rulesEngine = require('./rules-engine');
 
 const app = express();
 const server = http.createServer(app);
@@ -86,7 +89,8 @@ const defaultData = {
 };
 
 // 内存缓存
-let memoryData = {...defaultData};
+const backupPath = path.join(__dirname, '道途项目备份.json');
+let memoryData = fs.existsSync(backupPath) ? JSON.parse(fs.readFileSync(backupPath, 'utf8')) : {...defaultData};
 const rooms = new Map();
 
 const PLAYABLE_TILE_TYPES = ["plain", "forest", "hill", "river", "spring", "trial", "desert", "void", "holySpring", "riverGod", "goldMine"];
@@ -133,11 +137,11 @@ function careerIsReady(careerId){
 }
 
 function createGameRoom(roomCode, host, maxPlayers){
-  return {roomCode, phase:"lobby", hostId:host.playerId, maxPlayers, createdAt:Date.now(), updatedAt:Date.now(), turnIndex:0, round:1, currentPlayerId:null, winner:null, log:[], tiles:buildTiles(), deck:[], discard:[], players:[host]};
+  return {roomCode, phase:"lobby", hostId:host.playerId, maxPlayers, createdAt:Date.now(), updatedAt:Date.now(), turnIndex:0, round:1, currentPlayerId:null, winner:null, log:[], tiles:rulesEngine.createTiles(), decks:{}, equipmentDecks:{}, discard:[], holySpringUses:0, players:[host]};
 }
 
 function publicPlayer(player){
-  return {playerId:player.playerId, nickname:player.nickname, careerId:player.careerId, connected:!!player.connected, ready:!!player.ready, hp:player.hp, maxHp:player.maxHp, score:player.score, resources:{...player.resources}, position:player.position, eliminated:!!player.eliminated, actionsLeft:player.actionsLeft, moved:!!player.moved};
+  return {playerId:player.playerId, nickname:player.nickname, careerId:player.careerId, connected:!!player.connected, ready:!!player.ready, hp:player.hp, maxHp:player.maxHp, score:player.score, resources:{...player.resources}, position:player.position, eliminated:!!player.eliminated, actionsLeft:player.actionsLeft, moved:!!player.moved, movePoints:player.movePoints, handCount:player.hand?.length||0, secretCount:player.secrets?.length||0, equipment:(player.equipment||[]).map(card=>({name:card.name,type:card.type})), talent2:player.talent2, talent3:player.talent3, aimUntilRound:player.aimUntilRound||0, dog:!!player.dog, burn:player.burn||0, blessing:!!player.blessing, trial:player.trial||null};
 }
 
 function publicRoom(room){
@@ -146,7 +150,7 @@ function publicRoom(room){
 
 function privateRoom(room, playerId){
   const player = room.players.find(item=>item.playerId === playerId);
-  return {hand:player ? player.hand : [], secrets:player ? player.secrets : [], equipment:player ? player.equipment : [], reconnectToken:player ? player.reconnectToken : null};
+  return {hand:player ? player.hand : [], secrets:player ? player.secrets : [], equipment:player ? player.equipment : [], reconnectToken:player ? player.reconnectToken : null, deckCount:room.decks?.[playerId]?.length||0, equipmentDeckCount:room.equipmentDecks?.[playerId]?.length||0};
 }
 
 function emitRoom(room){
@@ -161,7 +165,8 @@ function appendLog(room, message){ room.log.push({at:Date.now(), message}); if(r
 async function saveGameRoom(room){
   if(!SUPABASE_URL || !SUPABASE_SERVICE_KEY) return;
   try{
-    await fetch(`${SUPABASE_URL}/rest/v1/${GAME_TABLE_NAME}`, {method:"POST", headers:{"apikey":SUPABASE_SERVICE_KEY,"Authorization":`Bearer ${SUPABASE_SERVICE_KEY}`,"Content-Type":"application/json","Prefer":"resolution=merge-duplicates,return=minimal"}, body:JSON.stringify({room_code:room.roomCode, content:room, updated_at:new Date().toISOString()})});
+    const response = await fetch(`${SUPABASE_URL}/rest/v1/${GAME_TABLE_NAME}`, {method:"POST", headers:{"apikey":SUPABASE_SERVICE_KEY,"Authorization":`Bearer ${SUPABASE_SERVICE_KEY}`,"Content-Type":"application/json","Prefer":"resolution=merge-duplicates,return=minimal"}, body:JSON.stringify({room_code:room.roomCode, content:room, updated_at:new Date().toISOString()})});
+    if(!response.ok) console.error("❌保存对局失败", response.status, await response.text());
   }catch(error){ console.error("❌保存对局失败", error.message); }
 }
 
@@ -172,20 +177,27 @@ async function loadGameRoom(roomCode){
     const response = await fetch(`${SUPABASE_URL}/rest/v1/${GAME_TABLE_NAME}?room_code=eq.${encodeURIComponent(roomCode)}&select=content&limit=1`, {headers:{"apikey":SUPABASE_SERVICE_KEY,"Authorization":`Bearer ${SUPABASE_SERVICE_KEY}`}});
     const rows = await response.json();
     const room = rows?.[0]?.content;
-    if(room?.roomCode){ rooms.set(roomCode, room); return room; }
+    if(room?.roomCode){
+      room.players.forEach(player=>{player.connected=false;player.socketId=null});
+      rooms.set(roomCode, room);
+      return room;
+    }
   }catch(error){ console.error("❌读取对局失败", error.message); }
   return null;
 }
 
 function startRoom(room){
+  if(room.phase!=="lobby") return {ok:false,error:"对局已经开始或结束"};
   const targetPlayers = room.maxPlayers || MAX_PLAYERS;
   if(room.players.length !== targetPlayers) return {ok:false, error:`需要 ${targetPlayers} 名玩家才能开始`};
   if(new Set(room.players.map(player=>player.careerId)).size !== targetPlayers) return {ok:false, error:"玩家必须选择不同职业"};
-  room.deck = cardCopies(memoryData.cards, room.players.map(player=>player.careerId));
+  const decks = rulesEngine.createDecks(memoryData.cards, room.players);
+  room.decks = decks.decks; room.equipmentDecks = decks.equipmentDecks;
   for(const player of room.players){
-    player.hp = player.maxHp; player.score = 0; player.resources = {wood:2, stone:2, meat:2, gold:0, special:0}; player.position = "0:0"; player.actionsLeft = 2; player.moved = false; player.hand = room.deck.splice(0, 4); player.secrets = []; player.equipment = []; player.eliminated = false; player.ready = true;
+    player.hp = player.maxHp; player.score = 0; player.resources = {wood:player.careerId==="android"?2:0, stone:0, meat:0, gold:0, special:0}; player.position = room.tiles.filter(tile=>Math.max(Math.abs(tile.q),Math.abs(tile.r),Math.abs(tile.q+tile.r))===6)[room.players.indexOf(player)*7]?.id || "0:0"; player.actionsLeft = 2; player.moved = false; player.movePoints=null; player.hand=[]; rulesEngine.draw(room,player,3); player.secrets = []; player.equipment = []; player.eliminated = false; player.ready = true; player.buildsThisTurn=0; player.raidsThisTurn=0; player.playActionOpen=false; player.dog=player.careerId==="hunter"; player.raidMarkers=0; player.raidUses=0;
   }
-  room.phase = "playing"; room.currentPlayerId = room.players[0].playerId; room.round = 1; appendLog(room, "对局开始"); return {ok:true};
+  rulesEngine.draw(room,room.players[0]);
+  room.phase = "playing"; room.currentPlayerId = room.players[0].playerId; room.round = 1; appendLog(room, "对局开始，首位玩家抽取回合牌"); return {ok:true};
 }
 
 function activePlayer(room){ return room.players.find(player=>player.playerId === room.currentPlayerId); }
@@ -355,13 +367,13 @@ io.on('connection', (socket)=>{
 
   socket.on("startRoom", async ({roomCode, playerId} = {}, callback = ()=>{})=>{
     const room = rooms.get(String(roomCode || "").toUpperCase());
-    if(!room || room.hostId !== playerId) return callback({ok:false, error:"只有房主可以开始"});
+    if(!room || room.hostId !== playerId || room.players.find(item=>item.playerId===playerId)?.socketId !== socket.id) return callback({ok:false, error:"只有房主可以开始"});
     const result = startRoom(room); if(result.ok) await saveGameRoom(room); callback(result); emitRoom(room);
   });
 
   socket.on("gameAction", async ({roomCode, playerId, action} = {}, callback = ()=>{})=>{
     const room = rooms.get(String(roomCode || "").toUpperCase()); const player = room?.players.find(item=>item.playerId === playerId);
-    const result = room && player ? handleGameAction(room, player, action || {}) : {ok:false, error:"房间或玩家不存在"};
+    const result = room && player && player.socketId === socket.id ? rulesEngine.act(room, player, action || {}, memoryData.careers || []) : {ok:false, error:"房间或玩家身份无效"};
     if(result.ok){ room.updatedAt=Date.now(); await saveGameRoom(room); emitRoom(room); } callback(result);
   });
 
