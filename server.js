@@ -12,6 +12,9 @@ const io = new Server(server, {
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY;
 const TABLE_NAME = "daotu";
+const GAME_TABLE_NAME = "daotu_games";
+const MAX_PLAYERS = 5;
+const ROOM_CODE_LENGTH = 6;
 
 // 初始化默认数据（和你原版完全复制，作为兜底）
 const defaultData = {
@@ -84,6 +87,176 @@ const defaultData = {
 
 // 内存缓存
 let memoryData = {...defaultData};
+const rooms = new Map();
+
+const PLAYABLE_TILE_TYPES = ["plain", "forest", "hill", "river", "spring", "trial", "desert", "void", "holySpring", "riverGod", "goldMine"];
+const TILE_COST = {plain: 1, forest: 2, hill: 2, river: 2, spring: 1, trial: 1, desert: 1, void: 1, holySpring: 1, riverGod: 2, goldMine: 1};
+
+function makeRoomCode(){
+  let code;
+  do code = Math.random().toString(36).slice(2, 2 + ROOM_CODE_LENGTH).toUpperCase(); while(rooms.has(code));
+  return code;
+}
+
+function makeToken(){ return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 14)}`; }
+
+function buildTiles(){
+  const tiles = [];
+  for(let row = -2; row <= 2; row++){
+    const start = Math.max(-2, -row - 2);
+    const end = Math.min(2, -row + 2);
+    for(let col = start; col <= end; col++) tiles.push({id:`${col}:${row}`, q:col, r:row, type:"plain", building:null});
+  }
+  const by = new Map(tiles.map(tile=>[tile.id, tile]));
+  const setType = (q,r,type)=>{ const tile = by.get(`${q}:${r}`); if(tile) tile.type = type; };
+  setType(0,0,"trial"); setType(-1,0,"forest"); setType(1,0,"hill"); setType(0,-1,"river");
+  setType(0,1,"spring"); setType(-2,0,"desert"); setType(2,0,"void"); setType(-1,1,"holySpring");
+  setType(1,-1,"riverGod"); setType(0,2,"goldMine");
+  return tiles;
+}
+
+function tileDistance(a,b){ return Math.max(Math.abs(a.q-b.q), Math.abs(a.r-b.r), Math.abs((a.q+a.r)-(b.q+b.r))); }
+
+function cardCopies(cards, careerIds){
+  const deck = [];
+  for(const card of cards || []){
+    if(!careerIds.includes(card.career) || !card.name || !card.effect) continue;
+    const count = Math.max(0, Math.min(8, Number(card.count) || 0));
+    for(let index = 0; index < count; index++) deck.push({uid:`${card.uid || card.name}-${index}`, name:card.name, type:card.type || "行动卡", cost:card.cost || "无", effect:card.effect, trigger:card.trigger || "", career:card.career});
+  }
+  for(let index = deck.length - 1; index > 0; index--){ const swap = Math.floor(Math.random() * (index + 1)); [deck[index], deck[swap]] = [deck[swap], deck[index]]; }
+  return deck;
+}
+
+function careerIsReady(careerId){
+  return (memoryData.cards || []).some(card=>card.career === careerId && card.name && card.effect);
+}
+
+function createGameRoom(roomCode, host){
+  return {roomCode, phase:"lobby", hostId:host.playerId, createdAt:Date.now(), updatedAt:Date.now(), turnIndex:0, round:1, currentPlayerId:null, winner:null, log:[], tiles:buildTiles(), deck:[], discard:[], players:[host]};
+}
+
+function publicPlayer(player){
+  return {playerId:player.playerId, nickname:player.nickname, careerId:player.careerId, connected:!!player.connected, ready:!!player.ready, hp:player.hp, maxHp:player.maxHp, score:player.score, resources:{...player.resources}, position:player.position, eliminated:!!player.eliminated, actionsLeft:player.actionsLeft, moved:!!player.moved};
+}
+
+function publicRoom(room){
+  return {roomCode:room.roomCode, phase:room.phase, hostId:room.hostId, round:room.round, currentPlayerId:room.currentPlayerId, winner:room.winner, players:room.players.map(publicPlayer), tiles:room.tiles, discard:room.discard.slice(-20), log:room.log.slice(-40)};
+}
+
+function privateRoom(room, playerId){
+  const player = room.players.find(item=>item.playerId === playerId);
+  return {hand:player ? player.hand : [], secrets:player ? player.secrets : [], equipment:player ? player.equipment : [], reconnectToken:player ? player.reconnectToken : null};
+}
+
+function emitRoom(room){
+  for(const player of room.players){
+    if(!player.socketId) continue;
+    io.to(player.socketId).emit("gameState", {public:publicRoom(room), private:privateRoom(room, player.playerId)});
+  }
+}
+
+function appendLog(room, message){ room.log.push({at:Date.now(), message}); if(room.log.length > 100) room.log.shift(); }
+
+async function saveGameRoom(room){
+  if(!SUPABASE_URL || !SUPABASE_SERVICE_KEY) return;
+  try{
+    await fetch(`${SUPABASE_URL}/rest/v1/${GAME_TABLE_NAME}`, {method:"POST", headers:{"apikey":SUPABASE_SERVICE_KEY,"Authorization":`Bearer ${SUPABASE_SERVICE_KEY}`,"Content-Type":"application/json","Prefer":"resolution=merge-duplicates,return=minimal"}, body:JSON.stringify({room_code:room.roomCode, content:room, updated_at:new Date().toISOString()})});
+  }catch(error){ console.error("❌保存对局失败", error.message); }
+}
+
+async function loadGameRoom(roomCode){
+  if(rooms.has(roomCode)) return rooms.get(roomCode);
+  if(!SUPABASE_URL || !SUPABASE_SERVICE_KEY) return null;
+  try{
+    const response = await fetch(`${SUPABASE_URL}/rest/v1/${GAME_TABLE_NAME}?room_code=eq.${encodeURIComponent(roomCode)}&select=content&limit=1`, {headers:{"apikey":SUPABASE_SERVICE_KEY,"Authorization":`Bearer ${SUPABASE_SERVICE_KEY}`}});
+    const rows = await response.json();
+    const room = rows?.[0]?.content;
+    if(room?.roomCode){ rooms.set(roomCode, room); return room; }
+  }catch(error){ console.error("❌读取对局失败", error.message); }
+  return null;
+}
+
+function startRoom(room){
+  if(room.players.length !== MAX_PLAYERS) return {ok:false, error:"需要五名玩家才能开始"};
+  if(new Set(room.players.map(player=>player.careerId)).size !== MAX_PLAYERS) return {ok:false, error:"五名玩家必须选择不同职业"};
+  room.deck = cardCopies(memoryData.cards, room.players.map(player=>player.careerId));
+  for(const player of room.players){
+    player.hp = player.maxHp; player.score = 0; player.resources = {wood:2, stone:2, meat:2, gold:0, special:0}; player.position = "0:0"; player.actionsLeft = 2; player.moved = false; player.hand = room.deck.splice(0, 4); player.secrets = []; player.equipment = []; player.eliminated = false; player.ready = true;
+  }
+  room.phase = "playing"; room.currentPlayerId = room.players[0].playerId; room.round = 1; appendLog(room, "对局开始"); return {ok:true};
+}
+
+function activePlayer(room){ return room.players.find(player=>player.playerId === room.currentPlayerId); }
+
+function finishTurn(room, player){
+  player.actionsLeft = 2; player.moved = false;
+  const currentIndex = room.players.findIndex(item=>item.playerId === player.playerId);
+  let nextIndex = currentIndex;
+  for(let step=0; step<room.players.length; step++){
+    nextIndex = (nextIndex + 1) % room.players.length;
+    if(!room.players[nextIndex].eliminated) break;
+  }
+  if(nextIndex <= currentIndex) room.round += 1;
+  room.currentPlayerId = room.players[nextIndex].playerId;
+  const next = room.players[nextIndex]; next.actionsLeft = 2; next.moved = false;
+  appendLog(room, `${next.nickname} 的回合开始`);
+}
+
+function handleGameAction(room, player, action){
+  if(room.phase !== "playing") return {ok:false, error:"对局尚未开始或已经结束"};
+  if(player.eliminated) return {ok:false, error:"你已被淘汰"};
+  if(room.currentPlayerId !== player.playerId) return {ok:false, error:"还没轮到你"};
+  if(action.type === "endTurn"){ finishTurn(room, player); return {ok:true}; }
+  if(action.type === "move"){
+    if(player.moved) return {ok:false, error:"本回合已经移动过"};
+    const from = room.tiles.find(tile=>tile.id === player.position); const to = room.tiles.find(tile=>tile.id === action.tileId);
+    if(!from || !to || tileDistance(from,to) !== 1) return {ok:false, error:"只能移动到相邻地块"};
+    const roll = Math.max(1, Math.min(3, Number(action.points) || (1 + Math.floor(Math.random() * 3))));
+    if(TILE_COST[to.type] > roll) return {ok:false, error:`移动点数不足，需要 ${TILE_COST[to.type]} 点`};
+    player.position = to.id; player.moved = true; appendLog(room, `${player.nickname} 移动到了 ${to.id}`); return {ok:true, roll};
+  }
+  if(action.type === "draw"){
+    if(player.actionsLeft < 1 || room.deck.length < 1) return {ok:false, error:"无法抽牌"};
+    player.actionsLeft -= 1; player.hand.push(room.deck.pop()); if(action.extra && player.resources.meat > 0 && room.deck.length){ player.resources.meat -= 1; player.hand.push(room.deck.pop()); } appendLog(room, `${player.nickname} 抽取了卡牌`); return {ok:true};
+  }
+  if(action.type === "build"){
+    if(player.actionsLeft < 1) return {ok:false, error:"行动次数不足"};
+    const tile = room.tiles.find(item=>item.id === action.tileId);
+    if(!tile || tile.building) return {ok:false, error:"该地块不能建造"};
+    const career = memoryData.careers.find(item=>item.id === player.careerId);
+    if(career?.buildingName && tile.type === "trial") return {ok:false, error:"生存试炼板块不能建造"};
+    const requirements = {hunter:{meat:2}, merchant:{hp:2}, gambler:{stone:2}, paladin:{wood:2,stone:1}, beggar:{gold:2}, android:{wood:1,stone:1}, career_1787382232648:{wood:1,stone:1}}[player.careerId] || {wood:1};
+    for(const [resource, amount] of Object.entries(requirements)){
+      if(resource === "hp" ? player.hp <= amount : (player.resources[resource] || 0) < amount) return {ok:false, error:"资源不足"};
+    }
+    for(const [resource, amount] of Object.entries(requirements)){ if(resource === "hp") player.hp -= amount; else player.resources[resource] -= amount; }
+    tile.building = {ownerId:player.playerId, ownerName:player.nickname, name:career?.buildingName || "专属建筑", level:1, output:2}; player.actionsLeft -= 1; player.score += 1; appendLog(room, `${player.nickname} 建造了 ${tile.building.name}`);
+    return {ok:true};
+  }
+  if(action.type === "harvest"){
+    if(player.actionsLeft < 1) return {ok:false, error:"行动次数不足"};
+    const tile = room.tiles.find(item=>item.id === action.tileId);
+    if(!tile?.building || tile.building.ownerId !== player.playerId) return {ok:false, error:"只能收获自己的建筑"};
+    const output = Math.max(1, Number(tile.building.output) || 1); const resource = player.careerId === "hunter" ? "special" : player.careerId === "merchant" ? "special" : player.careerId === "gambler" ? "special" : "wood"; player.resources[resource] = (player.resources[resource] || 0) + output; player.actionsLeft -= 1; appendLog(room, `${player.nickname} 从建筑中收获了资源`); return {ok:true};
+  }
+  if(action.type === "attack"){
+    if(player.actionsLeft < 1) return {ok:false, error:"行动次数不足"};
+    const target = room.players.find(item=>item.playerId === action.targetPlayerId && !item.eliminated);
+    if(!target || target.position !== player.position || target.playerId === player.playerId) return {ok:false, error:"目标必须与你处于同一地块"};
+    target.hp -= 1; player.actionsLeft -= 1; appendLog(room, `${player.nickname} 对 ${target.nickname} 发起基础攻击`);
+    if(target.hp <= 0){ target.eliminated = true; appendLog(room, `${target.nickname} 被淘汰`); const survivors = room.players.filter(item=>!item.eliminated); if(survivors.length === 1){ room.phase = "finished"; room.winner = {type:"war", playerId:survivors[0].playerId, nickname:survivors[0].nickname}; appendLog(room, `${survivors[0].nickname} 获得战争胜利`); } }
+    return {ok:true};
+  }
+  if(action.type === "playCard"){
+    if(player.actionsLeft < 1) return {ok:false, error:"行动次数不足"};
+    const cardIndex = player.hand.findIndex(card=>card.uid === action.cardUid); if(cardIndex < 0) return {ok:false, error:"找不到这张牌"};
+    const card = player.hand.splice(cardIndex,1)[0]; player.actionsLeft -= 1;
+    if(card.type === "奥秘卡") player.secrets.push(card); else if(["武器","护具","防具","鞋","道具"].includes(card.type)) player.equipment.push(card); else room.discard.push(card);
+    appendLog(room, `${player.nickname} 使用了一张牌`); return {ok:true};
+  }
+  return {ok:false, error:"未知行动"};
+}
 
 // 从supabase读取id=1记录
 async function loadSupabase(){
@@ -139,6 +312,54 @@ io.on('connection', (socket)=>{
   // 下发当前内存数据，协议不变 fullData
   socket.emit("fullData", memoryData);
 
+  socket.on("createRoom", async ({nickname, careerId} = {}, callback = ()=>{})=>{
+    const cleanName = String(nickname || "").trim().slice(0, 24);
+    if(!cleanName) return callback({ok:false, error:"请输入昵称"});
+    const player = {playerId:makeToken(), nickname:cleanName, careerId:String(careerId || ""), reconnectToken:makeToken(), socketId:socket.id, connected:true, ready:false, hp:0, maxHp:0, score:0, resources:{}, position:null, actionsLeft:0, moved:false, hand:[], secrets:[], equipment:[], eliminated:false};
+    const career = (memoryData.careers || []).find(item=>item.id === player.careerId);
+    if(!career || !careerIsReady(player.careerId)) return callback({ok:false, error:"该职业卡牌尚未完成，暂未开放"});
+    player.maxHp = Number(career.hp) || 8;
+    const room = createGameRoom(makeRoomCode(), player); rooms.set(room.roomCode, room); socket.join(room.roomCode); await saveGameRoom(room);
+    callback({ok:true, roomCode:room.roomCode, playerId:player.playerId, reconnectToken:player.reconnectToken, isHost:true}); emitRoom(room);
+  });
+
+  socket.on("joinRoom", async ({roomCode, nickname, careerId} = {}, callback = ()=>{})=>{
+    const code = String(roomCode || "").trim().toUpperCase(); const cleanName = String(nickname || "").trim().slice(0, 24);
+    const room = await loadGameRoom(code);
+    if(!room) return callback({ok:false, error:"房间不存在"});
+    if(room.phase !== "lobby") return callback({ok:false, error:"对局已经开始，不能中途加入"});
+    if(room.players.length >= MAX_PLAYERS) return callback({ok:false, error:"房间已满"});
+    if(room.players.some(item=>item.nickname === cleanName)) return callback({ok:false, error:"昵称已被使用"});
+    if(room.players.some(item=>item.careerId === careerId)) return callback({ok:false, error:"该职业已被选择"});
+    const career = (memoryData.careers || []).find(item=>item.id === careerId); if(!career || !careerIsReady(careerId)) return callback({ok:false, error:"该职业卡牌尚未完成，暂未开放"});
+    const player = {playerId:makeToken(), nickname:cleanName, careerId:String(careerId), reconnectToken:makeToken(), socketId:socket.id, connected:true, ready:false, hp:0, maxHp:Number(career.hp) || 8, score:0, resources:{}, position:null, actionsLeft:0, moved:false, hand:[], secrets:[], equipment:[], eliminated:false};
+    room.players.push(player); room.updatedAt=Date.now(); socket.join(room.roomCode); await saveGameRoom(room); callback({ok:true, roomCode:room.roomCode, playerId:player.playerId, reconnectToken:player.reconnectToken, isHost:false}); emitRoom(room);
+  });
+
+  socket.on("reconnectRoom", async ({roomCode, reconnectToken} = {}, callback = ()=>{})=>{
+    const room = await loadGameRoom(String(roomCode || "").trim().toUpperCase());
+    const player = room?.players.find(item=>item.reconnectToken === reconnectToken);
+    if(!room || !player) return callback({ok:false, error:"重连凭证无效"});
+    player.socketId = socket.id; player.connected = true; socket.join(room.roomCode); callback({ok:true, roomCode:room.roomCode, playerId:player.playerId, reconnectToken:player.reconnectToken}); emitRoom(room);
+  });
+
+  socket.on("readyRoom", async ({roomCode, playerId} = {}, callback = ()=>{})=>{
+    const room = rooms.get(String(roomCode || "").toUpperCase()); const player = room?.players.find(item=>item.playerId === playerId);
+    if(!room || !player) return callback({ok:false, error:"房间或玩家不存在"}); player.ready = true; await saveGameRoom(room); callback({ok:true}); emitRoom(room);
+  });
+
+  socket.on("startRoom", async ({roomCode, playerId} = {}, callback = ()=>{})=>{
+    const room = rooms.get(String(roomCode || "").toUpperCase());
+    if(!room || room.hostId !== playerId) return callback({ok:false, error:"只有房主可以开始"});
+    const result = startRoom(room); if(result.ok) await saveGameRoom(room); callback(result); emitRoom(room);
+  });
+
+  socket.on("gameAction", async ({roomCode, playerId, action} = {}, callback = ()=>{})=>{
+    const room = rooms.get(String(roomCode || "").toUpperCase()); const player = room?.players.find(item=>item.playerId === playerId);
+    const result = room && player ? handleGameAction(room, player, action || {}) : {ok:false, error:"房间或玩家不存在"};
+    if(result.ok){ room.updatedAt=Date.now(); await saveGameRoom(room); emitRoom(room); } callback(result);
+  });
+
   socket.on("updateAll", (newData)=>{
     memoryData = newData;
     io.emit("fullData", memoryData);
@@ -148,6 +369,10 @@ io.on('connection', (socket)=>{
 
   socket.on("disconnect",()=>{
     console.log("客户端断开",socket.id);
+    for(const room of rooms.values()){
+      const player = room.players.find(item=>item.socketId === socket.id);
+      if(player){ player.connected = false; player.socketId = null; room.updatedAt=Date.now(); saveGameRoom(room); emitRoom(room); }
+    }
   })
 })
 
