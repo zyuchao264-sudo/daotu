@@ -132,8 +132,8 @@ function careerIsReady(careerId){
   return (memoryData.cards || []).some(card=>card.career === careerId && card.name && card.effect);
 }
 
-function createGameRoom(roomCode, host){
-  return {roomCode, phase:"lobby", hostId:host.playerId, createdAt:Date.now(), updatedAt:Date.now(), turnIndex:0, round:1, currentPlayerId:null, winner:null, log:[], tiles:buildTiles(), deck:[], discard:[], players:[host]};
+function createGameRoom(roomCode, host, maxPlayers){
+  return {roomCode, phase:"lobby", hostId:host.playerId, maxPlayers, createdAt:Date.now(), updatedAt:Date.now(), turnIndex:0, round:1, currentPlayerId:null, winner:null, log:[], tiles:buildTiles(), deck:[], discard:[], players:[host]};
 }
 
 function publicPlayer(player){
@@ -141,7 +141,7 @@ function publicPlayer(player){
 }
 
 function publicRoom(room){
-  return {roomCode:room.roomCode, phase:room.phase, hostId:room.hostId, round:room.round, currentPlayerId:room.currentPlayerId, winner:room.winner, players:room.players.map(publicPlayer), tiles:room.tiles, discard:room.discard.slice(-20), log:room.log.slice(-40)};
+  return {roomCode:room.roomCode, phase:room.phase, hostId:room.hostId, maxPlayers:room.maxPlayers || MAX_PLAYERS, round:room.round, currentPlayerId:room.currentPlayerId, winner:room.winner, players:room.players.map(publicPlayer), tiles:room.tiles, discard:room.discard.slice(-20), log:room.log.slice(-40)};
 }
 
 function privateRoom(room, playerId){
@@ -178,8 +178,9 @@ async function loadGameRoom(roomCode){
 }
 
 function startRoom(room){
-  if(room.players.length !== MAX_PLAYERS) return {ok:false, error:"需要五名玩家才能开始"};
-  if(new Set(room.players.map(player=>player.careerId)).size !== MAX_PLAYERS) return {ok:false, error:"五名玩家必须选择不同职业"};
+  const targetPlayers = room.maxPlayers || MAX_PLAYERS;
+  if(room.players.length !== targetPlayers) return {ok:false, error:`需要 ${targetPlayers} 名玩家才能开始`};
+  if(new Set(room.players.map(player=>player.careerId)).size !== targetPlayers) return {ok:false, error:"玩家必须选择不同职业"};
   room.deck = cardCopies(memoryData.cards, room.players.map(player=>player.careerId));
   for(const player of room.players){
     player.hp = player.maxHp; player.score = 0; player.resources = {wood:2, stone:2, meat:2, gold:0, special:0}; player.position = "0:0"; player.actionsLeft = 2; player.moved = false; player.hand = room.deck.splice(0, 4); player.secrets = []; player.equipment = []; player.eliminated = false; player.ready = true;
@@ -208,6 +209,10 @@ function handleGameAction(room, player, action){
   if(player.eliminated) return {ok:false, error:"你已被淘汰"};
   if(room.currentPlayerId !== player.playerId) return {ok:false, error:"还没轮到你"};
   if(action.type === "endTurn"){ finishTurn(room, player); return {ok:true}; }
+  if(action.type === "endGame"){
+    if(room.hostId !== player.playerId) return {ok:false, error:"只有房主可以结束游戏"};
+    room.phase = "finished"; room.winner = {type:"manual", playerId:player.playerId, nickname:player.nickname}; appendLog(room, `${player.nickname} 手动结束了游戏`); return {ok:true};
+  }
   if(action.type === "move"){
     if(player.moved) return {ok:false, error:"本回合已经移动过"};
     const from = room.tiles.find(tile=>tile.id === player.position); const to = room.tiles.find(tile=>tile.id === action.tileId);
@@ -312,14 +317,14 @@ io.on('connection', (socket)=>{
   // 下发当前内存数据，协议不变 fullData
   socket.emit("fullData", memoryData);
 
-  socket.on("createRoom", async ({nickname, careerId} = {}, callback = ()=>{})=>{
-    const cleanName = String(nickname || "").trim().slice(0, 24);
+  socket.on("createRoom", async ({nickname, careerId, maxPlayers} = {}, callback = ()=>{})=>{
+    const cleanName = String(nickname || "").trim().slice(0, 24); const requestedPlayers = Math.max(1, Math.min(MAX_PLAYERS, Number(maxPlayers) || MAX_PLAYERS));
     if(!cleanName) return callback({ok:false, error:"请输入昵称"});
     const player = {playerId:makeToken(), nickname:cleanName, careerId:String(careerId || ""), reconnectToken:makeToken(), socketId:socket.id, connected:true, ready:false, hp:0, maxHp:0, score:0, resources:{}, position:null, actionsLeft:0, moved:false, hand:[], secrets:[], equipment:[], eliminated:false};
     const career = (memoryData.careers || []).find(item=>item.id === player.careerId);
     if(!career || !careerIsReady(player.careerId)) return callback({ok:false, error:"该职业卡牌尚未完成，暂未开放"});
     player.maxHp = Number(career.hp) || 8;
-    const room = createGameRoom(makeRoomCode(), player); rooms.set(room.roomCode, room); socket.join(room.roomCode); await saveGameRoom(room);
+    const room = createGameRoom(makeRoomCode(), player, requestedPlayers); rooms.set(room.roomCode, room); socket.join(room.roomCode); await saveGameRoom(room);
     callback({ok:true, roomCode:room.roomCode, playerId:player.playerId, reconnectToken:player.reconnectToken, isHost:true}); emitRoom(room);
   });
 
@@ -328,7 +333,7 @@ io.on('connection', (socket)=>{
     const room = await loadGameRoom(code);
     if(!room) return callback({ok:false, error:"房间不存在"});
     if(room.phase !== "lobby") return callback({ok:false, error:"对局已经开始，不能中途加入"});
-    if(room.players.length >= MAX_PLAYERS) return callback({ok:false, error:"房间已满"});
+    if(room.players.length >= (room.maxPlayers || MAX_PLAYERS)) return callback({ok:false, error:"房间已满"});
     if(room.players.some(item=>item.nickname === cleanName)) return callback({ok:false, error:"昵称已被使用"});
     if(room.players.some(item=>item.careerId === careerId)) return callback({ok:false, error:"该职业已被选择"});
     const career = (memoryData.careers || []).find(item=>item.id === careerId); if(!career || !careerIsReady(careerId)) return callback({ok:false, error:"该职业卡牌尚未完成，暂未开放"});
