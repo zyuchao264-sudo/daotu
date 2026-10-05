@@ -16,7 +16,7 @@ const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY;
 const TABLE_NAME = "daotu";
 const GAME_TABLE_NAME = "daotu_games";
-const MAX_PLAYERS = 5;
+const MAX_PLAYERS = 6;
 const ROOM_CODE_LENGTH = 6;
 
 // 初始化默认数据（和你原版完全复制，作为兜底）
@@ -190,11 +190,11 @@ function startRoom(room){
   if(room.phase!=="lobby") return {ok:false,error:"对局已经开始或结束"};
   const targetPlayers = room.maxPlayers || MAX_PLAYERS;
   if(room.players.length !== targetPlayers) return {ok:false, error:`需要 ${targetPlayers} 名玩家才能开始`};
-  if(new Set(room.players.map(player=>player.careerId)).size !== targetPlayers) return {ok:false, error:"玩家必须选择不同职业"};
+  // 允许重复职业；每名玩家仍拥有独立牌库，避免重复职业共享手牌或牌库。
   const decks = rulesEngine.createDecks(memoryData.cards, room.players);
   room.decks = decks.decks; room.equipmentDecks = decks.equipmentDecks;
   for(const player of room.players){
-    player.hp = player.maxHp; player.score = 0; player.resources = {wood:player.careerId==="android"?2:0, stone:0, meat:0, gold:0, special:0}; player.position = room.tiles.filter(tile=>Math.max(Math.abs(tile.q),Math.abs(tile.r),Math.abs(tile.q+tile.r))===6)[room.players.indexOf(player)*7]?.id || "0:0"; player.actionsLeft = 2; player.moved = false; player.movePoints=null; player.hand=[]; rulesEngine.draw(room,player,3); player.secrets = []; player.equipment = []; player.eliminated = false; player.ready = true; player.buildsThisTurn=0; player.raidsThisTurn=0; player.playActionOpen=false; player.dog=player.careerId==="hunter"; player.raidMarkers=0; player.raidUses=0;
+    player.hp = player.maxHp; player.score = 0; player.resources = {wood:1, stone:1, meat:1, gold:0, special:0}; player.position = room.tiles.filter(tile=>Math.max(Math.abs(tile.q),Math.abs(tile.r),Math.abs(tile.q+tile.r))===6)[room.players.indexOf(player)*7]?.id || "0:0"; player.actionsLeft = 2; player.moved = false; player.movePoints=null; player.hand=[]; player.discard=[]; rulesEngine.draw(room,player,3); player.secrets = []; player.equipment = []; player.eliminated = false; player.ready = true; player.buildsThisTurn=0; player.raidsThisTurn=0; player.playActionOpen=false; player.dog=player.careerId==="hunter"; player.raidMarkers=0; player.raidUses=0;
   }
   rulesEngine.draw(room,room.players[0]);
   room.phase = "playing"; room.currentPlayerId = room.players[0].playerId; room.round = 1; appendLog(room, "对局开始，首位玩家抽取回合牌"); return {ok:true};

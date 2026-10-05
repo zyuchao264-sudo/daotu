@@ -62,9 +62,20 @@ function createDecks(cards,players){
 }
 
 function draw(room,player,amount=1,equipment=false){
-  const deck=(equipment?room.equipmentDecks:room.decks)?.[player.playerId]||[];
+  const decks=equipment?room.equipmentDecks:room.decks;
+  const deck=decks?.[player.playerId]||[];
+  const discard=equipment?[]:(player.discard||[]);
+  if(!equipment&&deck.length===0&&discard.length){
+    while(discard.length) deck.push(discard.pop());
+    shuffle(deck);
+    log(room,`${player.nickname} 的职业牌弃牌堆已洗回牌库`);
+  }
   let drawn=0;
-  while(drawn<amount&&deck.length){player.hand.push(deck.pop());drawn++}
+  while(drawn<amount){
+    if(!deck.length&&!equipment&&discard.length){while(discard.length) deck.push(discard.pop());shuffle(deck)}
+    if(!deck.length)break;
+    player.hand.push(deck.pop());drawn++;
+  }
   return drawn;
 }
 
@@ -156,7 +167,7 @@ function playCard(room,player,action){
     if(!supportedEquipment.has(card.name))return fail("这件装备的效果尚未接入，暂不能装备");
     if(!player.playActionOpen){if(player.actionsLeft<1)return fail("行动次数不足");player.actionsLeft--;player.playActionOpen=true}
     const old=player.equipment.find(item=>item.slot===slot);
-    if(old)room.discard.push(old);
+    if(old)(player.discard||=[]).push(old);
     player.equipment=player.equipment.filter(item=>item.slot!==slot);
     player.equipment.push({...card,slot});player.hand.splice(index,1);
     log(room,`${player.nickname} 装备了 ${card.name}`);return {ok:true};
@@ -203,7 +214,7 @@ function playCard(room,player,action){
   if(blackGold&&player.resources.special<4)return fail("黑金需要 4 枚欺诈币");
   if(!healing&&!hunting&&!drawing&&!advancing&&!summonDog&&!stealth&&!aiming&&!dogEvolution&&!healingMerchant&&!blackGold&&!blackMarket&&!equipDraw&&!targetedAttack&&!wealthSwap&&!chipSwap&&!gamblerGain&&!loan&&!lucky&&!escape&&!paymentRain&&!painkiller&&!drip&&!weak&&!blankCheque)return fail("此卡效果尚未接入，暂不能打出，手牌与资源不会扣除");
   if(!player.playActionOpen){if(player.actionsLeft<1)return fail("行动次数不足");player.actionsLeft--;player.playActionOpen=true}
-  pay(player,cost);player.hand.splice(index,1);room.discard.push(card);
+  pay(player,cost);player.hand.splice(index,1);(player.discard||=[]).push(card);
   if(healing)player.hp=Math.min(player.maxHp,player.hp+healing);
   if(hunting)gain(player,"meat",player.dog?2:1);
   if(drawing)draw(room,player,1,true);
@@ -244,7 +255,7 @@ function act(room,player,action,careers){
   if(action.type==="endTurn")return endTurn(room,player);
   if(action.type==="discard"){
     const index=player.hand.findIndex(card=>card.uid===action.cardUid);if(index<0)return fail("找不到这张牌");
-    room.discard.push(player.hand.splice(index,1)[0]);log(room,`${player.nickname} 弃置 1 张牌`);return {ok:true};
+    (player.discard||=[]).push(player.hand.splice(index,1)[0]);log(room,`${player.nickname} 弃置 1 张牌`);return {ok:true};
   }
   if(action.type==="rollMove"||action.type==="extraMove"){
     if(player.movePoints!==null&&player.movePoints!==undefined)return fail("请先用完当前移动点数");

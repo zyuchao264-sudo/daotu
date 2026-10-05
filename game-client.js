@@ -1,3 +1,5 @@
+const maxPlayersControl=document.getElementById('maxPlayers');
+if(maxPlayersControl&&!maxPlayersControl.querySelector('option[value="6"]')){const option=document.createElement('option');option.value='6';option.textContent='6 人';option.selected=true;maxPlayersControl.append(option)}
 const ROLE_IMAGES = {
   hunter:"/assets/avatars/hunter.png",
   merchant:"/assets/avatars/merchant.png",
