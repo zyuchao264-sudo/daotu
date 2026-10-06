@@ -1,3 +1,8 @@
+// 顶层初始化一旦抛错，后面的语句会被整段跳过，界面就会“悄悄留白”。
+// 这里先把错误暴露到顶栏，避免出现无从判断的空白页面。
+window.addEventListener('error',event=>{
+  try{ if(typeof setStatus==="function")setStatus('脚本出错：'+(event.message||'未知错误')+'（请按 Ctrl+F5 强制刷新）'); }catch{}
+});
 const maxPlayersControl=document.getElementById('maxPlayers');
 if(maxPlayersControl&&!maxPlayersControl.querySelector('option[value="6"]')){const option=document.createElement('option');option.value='6';option.textContent='6 人';option.selected=true;maxPlayersControl.append(option)}
 const ROLE_IMAGES = {
@@ -32,6 +37,15 @@ function terrainCostFor(player,tile){
   return Math.max(1,base-discount);
 }
 const SUPPORTED_CARDS = new Set(["止血绷带","舔舐伤口","狩猎","整备","前进","召唤猎狗","隐秘行踪","战术瞄准","猎狗进化","金盆洗手","黑金","黑市交易","投资军火","瞄准射击","放暗箭","轻便草鞋","草药","轻皮衣","黑大衣","马车","钱是万能的","换取筹码","哪有赌徒天天输","贷款","好运or厄运","逃跑是门技术","撒钱","止痛药","打吊水","假意示弱","空头支票"]);
+// 每名玩家一个固定颜色，地图棋子、占领标记与角色栏共用，方便一眼对应。
+// 必须在这里声明：playerColor() 会在 renderMap 里被调用，若声明晚于任何顶层初始化就可能踩到暂时性死区。
+const PLAYER_COLORS=["#f0c04a","#63b8d6","#e0806d","#8fd07a","#c69ae0","#e6df7c"];
+// 由初始化创建的句柄：先声明为 undefined 而不是 const，初始化若失败也只是留空，不会连累后面调用它们的函数。
+let boardHint=null;
+let trialDialog=null;
+let mapToolbar=null;
+// 指令按钮注册表同样提前声明：setCommand 会在渲染过程中访问它，不能等初始化时才建。
+const commandButtons={};
 let selectedTileId = null;
 let selectedPlayerId = null;
 const MAP_FIT = 960;          // 100% 缩放时短边的 viewBox 边长，恰好容纳整张地图
@@ -45,15 +59,14 @@ let mapCenter = {...MAP_HOME};
 let mapBounds = {minX:MAP_HOME.x-410,maxX:MAP_HOME.x+410,minY:MAP_HOME.y-421,maxY:MAP_HOME.y+421};
 const layoutStyle=document.createElement('link');
 layoutStyle.rel='stylesheet';layoutStyle.href='/game-layout.css';document.head.append(layoutStyle);
-const mapToolbar=document.createElement('div');
-mapToolbar.className='map-toolbar';
-mapToolbar.innerHTML='<div id="mapPlayers" class="map-players"></div><div class="zoom-controls"><span class="pan-hint">按住右键拖动地图（左键/中键同样可拖动）</span><button id="zoomOut" aria-label="缩小地图">−</button><span id="zoomLabel">100%</span><button id="zoomIn" aria-label="放大地图">＋</button><button id="zoomReset">全图</button></div>';
-$('board').before(mapToolbar);
+const mapToolbarElement=document.createElement('div');
+mapToolbarElement.className='map-toolbar';
+mapToolbarElement.innerHTML='<div id="mapPlayers" class="map-players"></div><div class="zoom-controls"><span class="pan-hint">按住右键拖动地图（左键/中键同样可拖动）</span><button id="zoomOut" aria-label="缩小地图">−</button><span id="zoomLabel">100%</span><button id="zoomIn" aria-label="放大地图">＋</button><button id="zoomReset">全图</button></div>';
+mapToolbar=mapToolbarElement;
+$('board').before(mapToolbarElement);
 // ===== 指令面板 =====
 // 常驻外壳：按钮与下拉只建一次，之后仅切换 hidden/disabled/文案。
 // 这样状态刷新不会重置已选的目标/资源/建筑，也不会打断键盘焦点。
-// 注意：commandButtons 必须先于 buildCommandPanel() 声明，否则会踩到暂时性死区。
-const commandButtons={};
 buildCommandPanel();
 function buildCommandPanel(){
   $('actionbar').innerHTML=`<div class="cmd-groups">
@@ -247,7 +260,7 @@ function updateMapView(){
   const view=mapViewSize();
   clampMapCenter(view);
   if(svg)svg.setAttribute('viewBox',`${mapCenter.x-view.width/2} ${mapCenter.y-view.height/2} ${view.width} ${view.height}`);
-  $('zoomLabel').textContent=`${Math.round(mapZoom*100)}%`;
+  setText('zoomLabel',`${Math.round(mapZoom*100)}%`);
 }
 // 像素位移换算成 viewBox 用户单位：交给浏览器算，preserveAspectRatio 的留白与缩放都自动包含。
 function panMapByPixels(deltaX,deltaY){
@@ -362,8 +375,20 @@ function renderLobby(publicState){
   notice('lobbyNotice',publicState.players.length<target?`还需要 ${target-publicState.players.length} 名玩家。`:'人数已到齐，可以开始。');
 }
 function hexCenter(tile){return {x:MAP_HOME.x+61.5*tile.q,y:MAP_HOME.y+71*tile.r+35.5*tile.q}}
-// 每名玩家一个固定颜色，地图棋子、占领标记与角色栏共用，方便一眼对应。
-const PLAYER_COLORS=["#f0c04a","#63b8d6","#e0806d","#8fd07a","#c69ae0","#e6df7c"];
+function normalizeTiles(input){
+  const source=Array.isArray(input)?input:[];
+  const normalized=source.map(tile=>{
+    const id=String(tile?.id??'');
+    const parts=id.split(':').map(Number);
+    const q=Number.isFinite(Number(tile?.q))?Number(tile.q):parts[0];
+    const r=Number.isFinite(Number(tile?.r))?Number(tile.r):parts[1];
+    return Number.isFinite(q)&&Number.isFinite(r)?{...tile,id:id||`${q}:${r}`,q,r,type:tile.type||'plain'}:null;
+  }).filter(Boolean);
+  if(normalized.length>=100)return normalized;
+  const fallback=[];
+  for(let r=-6;r<=6;r++)for(let q=-6;q<=6;q++)if(Math.max(Math.abs(q),Math.abs(r),Math.abs(q+r))<=6)fallback.push({id:`${q}:${r}`,q,r,type:q===0&&r===0?'trial':'plain',building:null,resource:null});
+  return fallback;
+}
 function playerColor(publicState,playerId){
   const index=publicState.players.findIndex(player=>player.playerId===playerId);
   return PLAYER_COLORS[(index<0?0:index)%PLAYER_COLORS.length];
@@ -394,7 +419,8 @@ function mapBoundsFor(tiles){
   };
 }
 function renderMap(publicState, player){
-  const tiles=publicState.tiles||[];
+  const tiles=normalizeTiles(publicState.tiles);
+  publicState.tiles=tiles;
   mapBounds=mapBoundsFor(tiles);
   const hexPoints="-41,0 -20.5,-35.5 20.5,-35.5 41,0 20.5,35.5 -20.5,35.5";
   const innerPoints="-37,0 -18.5,-32 18.5,-32 37,0 18.5,32 -18.5,32";
@@ -442,8 +468,11 @@ function renderMap(publicState, player){
   $('board').innerHTML=`<svg class="hex-map" viewBox="0 0 900 900" role="img" aria-label="127 格六角战棋地图"><defs><filter id="mapNoise"><feTurbulence type="fractalNoise" baseFrequency=".045" numOctaves="2" seed="6"/><feColorMatrix values="0 0 0 0 0.12 0 0 0 0 0.14 0 0 0 0 0.09 0 0 0 .17 0"/></filter>${clipDefs.join('')}</defs><rect width="900" height="900" fill="#244d48"/>${cells}<rect width="900" height="900" filter="url(#mapNoise)" pointer-events="none" opacity=".16"/></svg>`;
   $('board').querySelectorAll('[data-tile]').forEach(cell=>cell.onclick=()=>onTileClick(cell.dataset.tile));
   $('board').querySelectorAll('[data-map-player]').forEach(marker=>marker.onclick=event=>{event.stopPropagation();selectMapPlayer(marker.dataset.mapPlayer)});
-  $('mapPlayers').innerHTML=publicState.players.map((item,index)=>`<button class="map-player ${item.playerId===selectedPlayerId?'selected':''}" style="border-left:4px solid ${playerColor(publicState,item.playerId)}" data-select-player="${esc(item.playerId)}"><span class="avatar">${roleImage(item.careerId)}</span><span><b>${index+1} · ${esc(item.nickname)}${item.playerId===meId?'（我）':''}</b><small>${item.eliminated?'已淘汰':`坐标 ${esc(item.position||'未出生')}`}${item.playerId===publicState.currentPlayerId?' · 当前回合':''}${item.goldMine?.roundsLeft>0?` · 大金矿剩 ${item.goldMine.roundsLeft} 回合`:''}</small></span></button>`).join('');
-  $('mapPlayers').querySelectorAll('[data-select-player]').forEach(button=>button.onclick=()=>selectMapPlayer(button.dataset.selectPlayer));
+  const mapPlayers=$('mapPlayers');
+  if(mapPlayers){
+    mapPlayers.innerHTML=publicState.players.map((item,index)=>`<button class="map-player ${item.playerId===selectedPlayerId?'selected':''}" style="border-left:4px solid ${playerColor(publicState,item.playerId)}" data-select-player="${esc(item.playerId)}"><span class="avatar">${roleImage(item.careerId)}</span><span><b>${index+1} · ${esc(item.nickname)}${item.playerId===meId?'（我）':''}</b><small>${item.eliminated?'已淘汰':`坐标 ${esc(item.position||'未出生')}`}${item.playerId===publicState.currentPlayerId?' · 当前回合':''}${item.goldMine?.roundsLeft>0?` · 大金矿剩 ${item.goldMine.roundsLeft} 回合`:''}</small></span></button>`).join('');
+    mapPlayers.querySelectorAll('[data-select-player]').forEach(button=>button.onclick=()=>selectMapPlayer(button.dataset.selectPlayer));
+  }
   const ownSelected=selectedPlayerId===meId;
   const myTurn=publicState.phase==='playing'&&publicState.currentPlayerId===meId&&!player?.eliminated;
   const selected=tiles.find(tile=>tile.id===selectedTileId);
@@ -454,18 +483,20 @@ function renderMap(publicState, player){
   const left=player?.movePoints;
   setCommand('confirmMove',{disabled:!canStep,label:canStep?`移动到选中格 · ${stepCost} 格`:'移动到选中格',
     title:canStep?`进入 ${selected?.id||''} 消耗 ${stepCost} 格`:'先掷移动骰，再点一个高亮的相邻格'});
-  $('confirmMove').disabled=!canStep;
-  $('movementHint').textContent=
+  const confirmButton=$('confirmMove');
+  if(confirmButton)confirmButton.disabled=!canStep;
+  setText('movementHint',
     !selectedPlayerId?'先选择自己的角色':
     !ownSelected?'正在查看其他角色':
     !myTurn?'等待对方行动':
     left==null?'请先掷移动骰':
     adjacent?`还剩 ${left} 格 · 进入消耗 ${stepCost} 格`:
-    `还剩 ${left} 格 · 点高亮格移动`;
+    `还剩 ${left} 格 · 点高亮格移动`);
   updateMapView();
   const claimText=selected?.claim?` · 大金矿已被 ${esc(selected.claim.nickname||"")} 占领（剩余 ${selected.claim.roundsLeft} 回合）`:selected?.type==="goldMine"?" · 大金矿可占领，进入即占领并连续 3 回合每回合结束获得 2 金":"";
   const costText=selected&&myTurn?` · 进入消耗 ${terrainCostFor(player,selected)} 格`:'';
-  $('boardHint').textContent=selected?`${terrain.name} · ${selected.id}${costText}${selected.feature==="forge"?" · 铁匠铺":""}${selected.building?` · ${selected.building.name}（产出 ${selected.building.output}）`:''}${selected.resource?' · 有资源':''}${claimText}。`:'点击相邻地块移动，或先掷移动骰；地图格之间已紧密拼接；按住右键可拖动地图。';
+  // 用可空写法：即使初始化失败导致提示元素不存在，也不会中断整张地图的渲染。
+  setText('boardHint',selected?`${terrain.name} · ${selected.id}${costText}${selected.feature==="forge"?" · 铁匠铺":""}${selected.building?` · ${selected.building.name}（产出 ${selected.building.output}）`:''}${selected.resource?' · 有资源':''}${claimText}。`:'点击相邻地块移动，或先掷移动骰；地图格之间已紧密拼接；按住右键可拖动地图。');
 }
 // 点击地块：始终更新选中状态；移动阶段点到走得通的相邻格就直接走，不必每格再点一次确认。
 function onTileClick(tileId){
@@ -641,13 +672,15 @@ function dispatchAction(kind){
   if(kind==="build")return send({type:"build",tileId,buildingType:$('buildingType').value});
   if(["harvest","raid"].includes(kind))return send({type:kind,tileId});
   if(kind==="attack")return send({type:"attack",targetPlayerId:$('targetPlayer')?.value||null,resourceChoice:$('resourceChoice')?.value});
-  if(kind==="trial")return trialDialog.showModal();
+  if(kind==="trial")return trialDialog?trialDialog.showModal():undefined;
   if(kind==="endGame"&&!confirm("确定手动结束这场对局吗？当前对局进度将不再继续。"))return;
   send({type:kind});
 }
-const boardHint=document.createElement("div");boardHint.id="boardHint";boardHint.className="tile-tooltip";
-document.querySelector(".board-hint").after(boardHint);
-const trialDialog=document.createElement("dialog");
+// 这两个句柄已在文件顶部声明为 let，这里只赋值：即使此处失败，也不会让后面调用它们的函数踩到死区。
+boardHint=document.createElement("div");boardHint.id="boardHint";boardHint.className="tile-tooltip";
+const boardHintAnchor=document.querySelector(".board-hint");
+if(boardHintAnchor)boardHintAnchor.after(boardHint);
+trialDialog=document.createElement("dialog");
 trialDialog.className="panel";
 trialDialog.style.cssText="color:#f8efd9;background:#251b16;border:1px solid #b8935b;border-radius:14px;max-width:440px;width:calc(100% - 32px)";
 trialDialog.innerHTML=`<form method="dialog"><h2>生存试炼 · 资源置换</h2><p>木、石、肉及专属资源 1:1 换分；金 2:1 换分。下回合开始结算。</p><div class="resource-row">${[["wood","木"],["stone","石"],["meat","肉"],["gold","金"],["special","专属"]].map(([key,label])=>`<label class="field">${label}<input name="${key}" type="number" min="0" value="0"></label>`).join("")}</div><div class="form-row"><button value="submit">确认开启</button><button value="cancel" class="secondary">取消</button></div></form>`;

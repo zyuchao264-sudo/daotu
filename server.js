@@ -109,6 +109,12 @@ function createGameRoom(roomCode, host, maxPlayers){
   return {roomCode, phase:"lobby", hostId:host.playerId, maxPlayers, createdAt:Date.now(), updatedAt:Date.now(), turnIndex:0, round:1, currentPlayerId:null, winner:null, log:[], tiles:rulesEngine.createTiles(), decks:{}, equipmentDecks:{}, discard:[], holySpringUses:0, players:[host]};
 }
 
+function validTiles(tiles){
+  return Array.isArray(tiles) && tiles.length >= 100 && tiles.every(tile =>
+    tile && typeof tile.id === "string" && Number.isFinite(Number(tile.q)) && Number.isFinite(Number(tile.r)) && typeof tile.type === "string"
+  );
+}
+
 function publicPlayer(player, round){
   return {playerId:player.playerId, nickname:player.nickname, careerId:player.careerId, connected:!!player.connected, ready:!!player.ready, hp:player.hp, maxHp:player.maxHp, score:player.score, resources:{...player.resources}, position:player.position, eliminated:!!player.eliminated, actionsLeft:player.actionsLeft, moved:!!player.moved, movePoints:player.movePoints, handCount:player.hand?.length||0, secretCount:player.secrets?.length||0, equipment:(player.equipment||[]).map(card=>({name:card.name,type:card.type})), talent2:player.talent2, talent3:player.talent3, aimUntilRound:player.aimUntilRound||0, stealthUntilRound:player.stealthUntilRound||0, dog:!!player.dog, burn:player.burn||0, blessing:!!player.blessing, trial:player.trial||null, attackRange:rulesEngine.attackRange(player, round), goldMine:player.goldMine||null, goldMineCollected:player.goldMineCollected||0, rerollLeft:player.rerollLeft||0, moveSpent:!!player.moveSpent, ignoreTerrainCost:!!player.ignoreTerrainCost, buildsThisTurn:!!player.buildsThisTurn, raidsThisTurn:!!player.raidsThisTurn, playActionOpen:!!player.playActionOpen, stunnedUntilRound:player.stunnedUntilRound||0, talentSupport:rulesEngine.talentSupport(player.careerId)};
 }
@@ -166,7 +172,7 @@ async function loadGameRoom(roomCode){
     const rows = await response.json();
     const room = rows?.[0]?.content;
     if(room?.roomCode){
-      if(!Array.isArray(room.tiles) || room.tiles.length===0) room.tiles = rulesEngine.createTiles();
+      if(!validTiles(room.tiles)) room.tiles = rulesEngine.createTiles();
       room.log = Array.isArray(room.log) ? room.log : [];
       room.discard = Array.isArray(room.discard) ? room.discard : [];
       room.players = Array.isArray(room.players) ? room.players : [];
