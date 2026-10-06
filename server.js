@@ -93,9 +93,6 @@ const backupPath = path.join(__dirname, '道途项目备份.json');
 let memoryData = fs.existsSync(backupPath) ? JSON.parse(fs.readFileSync(backupPath, 'utf8')) : {...defaultData};
 const rooms = new Map();
 
-const PLAYABLE_TILE_TYPES = ["plain", "forest", "hill", "river", "spring", "trial", "desert", "void", "holySpring", "riverGod", "goldMine"];
-const TILE_COST = {plain: 1, forest: 2, hill: 2, river: 2, spring: 1, trial: 1, desert: 1, void: 1, holySpring: 1, riverGod: 2, goldMine: 1};
-
 function makeRoomCode(){
   let code;
   do code = Math.random().toString(36).slice(2, 2 + ROOM_CODE_LENGTH).toUpperCase(); while(rooms.has(code));
@@ -103,34 +100,6 @@ function makeRoomCode(){
 }
 
 function makeToken(){ return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 14)}`; }
-
-function buildTiles(){
-  const tiles = [];
-  for(let row = -2; row <= 2; row++){
-    const start = Math.max(-2, -row - 2);
-    const end = Math.min(2, -row + 2);
-    for(let col = start; col <= end; col++) tiles.push({id:`${col}:${row}`, q:col, r:row, type:"plain", building:null});
-  }
-  const by = new Map(tiles.map(tile=>[tile.id, tile]));
-  const setType = (q,r,type)=>{ const tile = by.get(`${q}:${r}`); if(tile) tile.type = type; };
-  setType(0,0,"trial"); setType(-1,0,"forest"); setType(1,0,"hill"); setType(0,-1,"river");
-  setType(0,1,"spring"); setType(-2,0,"desert"); setType(2,0,"void"); setType(-1,1,"holySpring");
-  setType(1,-1,"riverGod"); setType(0,2,"goldMine");
-  return tiles;
-}
-
-function tileDistance(a,b){ return Math.max(Math.abs(a.q-b.q), Math.abs(a.r-b.r), Math.abs((a.q+a.r)-(b.q+b.r))); }
-
-function cardCopies(cards, careerIds){
-  const deck = [];
-  for(const card of cards || []){
-    if(!careerIds.includes(card.career) || !card.name || !card.effect) continue;
-    const count = Math.max(0, Math.min(8, Number(card.count) || 0));
-    for(let index = 0; index < count; index++) deck.push({uid:`${card.uid || card.name}-${index}`, name:card.name, type:card.type || "行动卡", cost:card.cost || "无", effect:card.effect, trigger:card.trigger || "", career:card.career});
-  }
-  for(let index = deck.length - 1; index > 0; index--){ const swap = Math.floor(Math.random() * (index + 1)); [deck[index], deck[swap]] = [deck[swap], deck[index]]; }
-  return deck;
-}
 
 function careerIsReady(careerId){
   return (memoryData.cards || []).some(card=>card.career === careerId && card.name && card.effect);
@@ -140,12 +109,12 @@ function createGameRoom(roomCode, host, maxPlayers){
   return {roomCode, phase:"lobby", hostId:host.playerId, maxPlayers, createdAt:Date.now(), updatedAt:Date.now(), turnIndex:0, round:1, currentPlayerId:null, winner:null, log:[], tiles:rulesEngine.createTiles(), decks:{}, equipmentDecks:{}, discard:[], holySpringUses:0, players:[host]};
 }
 
-function publicPlayer(player){
-  return {playerId:player.playerId, nickname:player.nickname, careerId:player.careerId, connected:!!player.connected, ready:!!player.ready, hp:player.hp, maxHp:player.maxHp, score:player.score, resources:{...player.resources}, position:player.position, eliminated:!!player.eliminated, actionsLeft:player.actionsLeft, moved:!!player.moved, movePoints:player.movePoints, handCount:player.hand?.length||0, secretCount:player.secrets?.length||0, equipment:(player.equipment||[]).map(card=>({name:card.name,type:card.type})), talent2:player.talent2, talent3:player.talent3, aimUntilRound:player.aimUntilRound||0, dog:!!player.dog, burn:player.burn||0, blessing:!!player.blessing, trial:player.trial||null};
+function publicPlayer(player, round){
+  return {playerId:player.playerId, nickname:player.nickname, careerId:player.careerId, connected:!!player.connected, ready:!!player.ready, hp:player.hp, maxHp:player.maxHp, score:player.score, resources:{...player.resources}, position:player.position, eliminated:!!player.eliminated, actionsLeft:player.actionsLeft, moved:!!player.moved, movePoints:player.movePoints, handCount:player.hand?.length||0, secretCount:player.secrets?.length||0, equipment:(player.equipment||[]).map(card=>({name:card.name,type:card.type})), talent2:player.talent2, talent3:player.talent3, aimUntilRound:player.aimUntilRound||0, stealthUntilRound:player.stealthUntilRound||0, dog:!!player.dog, burn:player.burn||0, blessing:!!player.blessing, trial:player.trial||null, attackRange:rulesEngine.attackRange(player, round), goldMine:player.goldMine||null, goldMineCollected:player.goldMineCollected||0, rerollLeft:player.rerollLeft||0, moveSpent:!!player.moveSpent, talentSupport:rulesEngine.talentSupport(player.careerId)};
 }
 
 function publicRoom(room){
-  return {roomCode:room.roomCode, phase:room.phase, hostId:room.hostId, maxPlayers:room.maxPlayers || MAX_PLAYERS, round:room.round, currentPlayerId:room.currentPlayerId, winner:room.winner, players:room.players.map(publicPlayer), tiles:room.tiles, discard:room.discard.slice(-20), log:room.log.slice(-40)};
+  return {roomCode:room.roomCode, phase:room.phase, hostId:room.hostId, maxPlayers:room.maxPlayers || MAX_PLAYERS, round:room.round, currentPlayerId:room.currentPlayerId, winner:room.winner, players:room.players.map(player=>publicPlayer(player, room.round)), tiles:room.tiles, discard:room.discard.slice(-20), log:room.log.slice(-40)};
 }
 
 function privateRoom(room, playerId){
@@ -162,12 +131,31 @@ function emitRoom(room){
 
 function appendLog(room, message){ room.log.push({at:Date.now(), message}); if(room.log.length > 100) room.log.shift(); }
 
+// 外部请求统一加超时，避免云端无响应时把玩家的操作永久挂起。
+const CLOUD_TIMEOUT_MS = 6000;
+
 async function saveGameRoom(room){
   if(!SUPABASE_URL || !SUPABASE_SERVICE_KEY) return;
   try{
-    const response = await fetch(`${SUPABASE_URL}/rest/v1/${GAME_TABLE_NAME}`, {method:"POST", headers:{"apikey":SUPABASE_SERVICE_KEY,"Authorization":`Bearer ${SUPABASE_SERVICE_KEY}`,"Content-Type":"application/json","Prefer":"resolution=merge-duplicates,return=minimal"}, body:JSON.stringify({room_code:room.roomCode, content:room, updated_at:new Date().toISOString()})});
+    const response = await fetch(`${SUPABASE_URL}/rest/v1/${GAME_TABLE_NAME}`, {method:"POST", headers:{"apikey":SUPABASE_SERVICE_KEY,"Authorization":`Bearer ${SUPABASE_SERVICE_KEY}`,"Content-Type":"application/json","Prefer":"resolution=merge-duplicates,return=minimal"}, body:JSON.stringify({room_code:room.roomCode, content:room, updated_at:new Date().toISOString()}), signal:AbortSignal.timeout(CLOUD_TIMEOUT_MS)});
     if(!response.ok) console.error("❌保存对局失败", response.status, await response.text());
   }catch(error){ console.error("❌保存对局失败", error.message); }
+}
+
+async function deleteGameRoom(roomCode){
+  if(!SUPABASE_URL || !SUPABASE_SERVICE_KEY) return;
+  try{
+    await fetch(`${SUPABASE_URL}/rest/v1/${GAME_TABLE_NAME}?room_code=eq.${encodeURIComponent(roomCode)}`, {method:"DELETE", headers:{"apikey":SUPABASE_SERVICE_KEY,"Authorization":`Bearer ${SUPABASE_SERVICE_KEY}`}, signal:AbortSignal.timeout(CLOUD_TIMEOUT_MS)});
+  }catch(error){ console.error("❌删除对局失败", error.message); }
+}
+
+// 每个房间的保存按顺序排队：广播不再等待云端，同时避免并发写入用旧快照覆盖新状态。
+const saveQueues = new Map();
+function persistRoom(room){
+  const previous = saveQueues.get(room.roomCode) || Promise.resolve();
+  const next = previous.then(()=>saveGameRoom(room)).catch(()=>{});
+  saveQueues.set(room.roomCode, next);
+  return next;
 }
 
 async function loadGameRoom(roomCode){
@@ -186,6 +174,17 @@ async function loadGameRoom(roomCode){
   return null;
 }
 
+// 出生点：按玩家顺序均匀分布在外圈（距中心 6 格）的板块上，绝不落到中心试炼格。
+function spawnTiles(room, count){
+  const ring = room.tiles
+    .filter(tile=>Math.max(Math.abs(tile.q),Math.abs(tile.r),Math.abs(tile.q+tile.r))===6)
+    .sort((first,second)=>Math.atan2(71*first.r+35.5*first.q,61.5*first.q)-Math.atan2(71*second.r+35.5*second.q,61.5*second.q));
+  const pool = ring.length ? ring : room.tiles.filter(tile=>tile.type!=="trial");
+  if(!pool.length) return [];
+  const step = Math.max(1, Math.floor(pool.length/Math.max(1,count)));
+  return Array.from({length:count},(_,index)=>pool[(index*step)%pool.length]);
+}
+
 function startRoom(room){
   if(room.phase!=="lobby") return {ok:false,error:"对局已经开始或结束"};
   const targetPlayers = room.maxPlayers || MAX_PLAYERS;
@@ -193,86 +192,25 @@ function startRoom(room){
   // 允许重复职业；每名玩家仍拥有独立牌库，避免重复职业共享手牌或牌库。
   const decks = rulesEngine.createDecks(memoryData.cards, room.players);
   room.decks = decks.decks; room.equipmentDecks = decks.equipmentDecks;
-  for(const player of room.players){
-    player.hp = player.maxHp; player.score = 0; player.resources = {wood:1, stone:1, meat:1, gold:0, special:0}; player.position = room.tiles.filter(tile=>Math.max(Math.abs(tile.q),Math.abs(tile.r),Math.abs(tile.q+tile.r))===6)[room.players.indexOf(player)*7]?.id || "0:0"; player.actionsLeft = 2; player.moved = false; player.movePoints=null; player.hand=[]; player.discard=[]; rulesEngine.draw(room,player,3); player.secrets = []; player.equipment = []; player.eliminated = false; player.ready = true; player.buildsThisTurn=0; player.raidsThisTurn=0; player.playActionOpen=false; player.dog=player.careerId==="hunter"; player.raidMarkers=0; player.raidUses=0;
-  }
+  const spawnRing = spawnTiles(room, room.players.length);
+  room.players.forEach((player, index) => {
+    player.hp = player.maxHp; player.score = 0; player.resources = {wood:1, stone:1, meat:1, gold:0, special:0};
+    player.position = spawnRing[index].id;
+    player.actionsLeft = 2; player.moved = false; player.movePoints=null; player.hand=[]; player.discard=[]; player.equipmentDiscard=[];
+    rulesEngine.draw(room,player,3);
+    player.secrets = []; player.equipment = []; player.eliminated = false; player.ready = true;
+    player.buildsThisTurn=0; player.raidsThisTurn=0; player.attacksThisTurn=0; player.playActionOpen=false;
+    player.dog=player.careerId==="hunter"; player.raidMarkers=0; player.raidUses=0;
+    player.talent2=null; player.talent3=null; player.burn=0; player.blessing=false;
+    player.weakShield=0; player.weakShieldHit=false; player.armorUses=2; player.coatUsed=false;
+    player.aimUntilRound=0; player.stealthUntilRound=0; player.stunnedUntilRound=0;
+    player.painkillerUntilRound=0; player.dripHealRound=0; player.loanMovePenaltyRound=0;
+    player.trial=null; player.debtPending=false; player.fireTiles=[];
+    player.goldMine=null; player.goldMineCollected=0;
+    player.rerollLeft=player.careerId==="gambler"?1:0; player.moveSpent=false;
+  });
   rulesEngine.draw(room,room.players[0]);
   room.phase = "playing"; room.currentPlayerId = room.players[0].playerId; room.round = 1; appendLog(room, "对局开始，首位玩家抽取回合牌"); return {ok:true};
-}
-
-function activePlayer(room){ return room.players.find(player=>player.playerId === room.currentPlayerId); }
-
-function finishTurn(room, player){
-  player.actionsLeft = 2; player.moved = false;
-  const currentIndex = room.players.findIndex(item=>item.playerId === player.playerId);
-  let nextIndex = currentIndex;
-  for(let step=0; step<room.players.length; step++){
-    nextIndex = (nextIndex + 1) % room.players.length;
-    if(!room.players[nextIndex].eliminated) break;
-  }
-  if(nextIndex <= currentIndex) room.round += 1;
-  room.currentPlayerId = room.players[nextIndex].playerId;
-  const next = room.players[nextIndex]; next.actionsLeft = 2; next.moved = false;
-  appendLog(room, `${next.nickname} 的回合开始`);
-}
-
-function handleGameAction(room, player, action){
-  if(room.phase !== "playing") return {ok:false, error:"对局尚未开始或已经结束"};
-  if(player.eliminated) return {ok:false, error:"你已被淘汰"};
-  if(room.currentPlayerId !== player.playerId) return {ok:false, error:"还没轮到你"};
-  if(action.type === "endTurn"){ finishTurn(room, player); return {ok:true}; }
-  if(action.type === "endGame"){
-    if(room.hostId !== player.playerId) return {ok:false, error:"只有房主可以结束游戏"};
-    room.phase = "finished"; room.winner = {type:"manual", playerId:player.playerId, nickname:player.nickname}; appendLog(room, `${player.nickname} 手动结束了游戏`); return {ok:true};
-  }
-  if(action.type === "move"){
-    if(player.moved) return {ok:false, error:"本回合已经移动过"};
-    const from = room.tiles.find(tile=>tile.id === player.position); const to = room.tiles.find(tile=>tile.id === action.tileId);
-    if(!from || !to || tileDistance(from,to) !== 1) return {ok:false, error:"只能移动到相邻地块"};
-    const roll = Math.max(1, Math.min(3, Number(action.points) || (1 + Math.floor(Math.random() * 3))));
-    if(TILE_COST[to.type] > roll) return {ok:false, error:`移动点数不足，需要 ${TILE_COST[to.type]} 点`};
-    player.position = to.id; player.moved = true; appendLog(room, `${player.nickname} 移动到了 ${to.id}`); return {ok:true, roll};
-  }
-  if(action.type === "draw"){
-    if(player.actionsLeft < 1 || room.deck.length < 1) return {ok:false, error:"无法抽牌"};
-    player.actionsLeft -= 1; player.hand.push(room.deck.pop()); if(action.extra && player.resources.meat > 0 && room.deck.length){ player.resources.meat -= 1; player.hand.push(room.deck.pop()); } appendLog(room, `${player.nickname} 抽取了卡牌`); return {ok:true};
-  }
-  if(action.type === "build"){
-    if(player.actionsLeft < 1) return {ok:false, error:"行动次数不足"};
-    const tile = room.tiles.find(item=>item.id === action.tileId);
-    if(!tile || tile.building) return {ok:false, error:"该地块不能建造"};
-    const career = memoryData.careers.find(item=>item.id === player.careerId);
-    if(career?.buildingName && tile.type === "trial") return {ok:false, error:"生存试炼板块不能建造"};
-    const requirements = {hunter:{meat:2}, merchant:{hp:2}, gambler:{stone:2}, paladin:{wood:2,stone:1}, beggar:{gold:2}, android:{wood:1,stone:1}, career_1787382232648:{wood:1,stone:1}}[player.careerId] || {wood:1};
-    for(const [resource, amount] of Object.entries(requirements)){
-      if(resource === "hp" ? player.hp <= amount : (player.resources[resource] || 0) < amount) return {ok:false, error:"资源不足"};
-    }
-    for(const [resource, amount] of Object.entries(requirements)){ if(resource === "hp") player.hp -= amount; else player.resources[resource] -= amount; }
-    tile.building = {ownerId:player.playerId, ownerName:player.nickname, name:career?.buildingName || "专属建筑", level:1, output:2}; player.actionsLeft -= 1; player.score += 1; appendLog(room, `${player.nickname} 建造了 ${tile.building.name}`);
-    return {ok:true};
-  }
-  if(action.type === "harvest"){
-    if(player.actionsLeft < 1) return {ok:false, error:"行动次数不足"};
-    const tile = room.tiles.find(item=>item.id === action.tileId);
-    if(!tile?.building || tile.building.ownerId !== player.playerId) return {ok:false, error:"只能收获自己的建筑"};
-    const output = Math.max(1, Number(tile.building.output) || 1); const resource = player.careerId === "hunter" ? "special" : player.careerId === "merchant" ? "special" : player.careerId === "gambler" ? "special" : "wood"; player.resources[resource] = (player.resources[resource] || 0) + output; player.actionsLeft -= 1; appendLog(room, `${player.nickname} 从建筑中收获了资源`); return {ok:true};
-  }
-  if(action.type === "attack"){
-    if(player.actionsLeft < 1) return {ok:false, error:"行动次数不足"};
-    const target = room.players.find(item=>item.playerId === action.targetPlayerId && !item.eliminated);
-    if(!target || target.position !== player.position || target.playerId === player.playerId) return {ok:false, error:"目标必须与你处于同一地块"};
-    target.hp -= 1; player.actionsLeft -= 1; appendLog(room, `${player.nickname} 对 ${target.nickname} 发起基础攻击`);
-    if(target.hp <= 0){ target.eliminated = true; appendLog(room, `${target.nickname} 被淘汰`); const survivors = room.players.filter(item=>!item.eliminated); if(survivors.length === 1){ room.phase = "finished"; room.winner = {type:"war", playerId:survivors[0].playerId, nickname:survivors[0].nickname}; appendLog(room, `${survivors[0].nickname} 获得战争胜利`); } }
-    return {ok:true};
-  }
-  if(action.type === "playCard"){
-    if(player.actionsLeft < 1) return {ok:false, error:"行动次数不足"};
-    const cardIndex = player.hand.findIndex(card=>card.uid === action.cardUid); if(cardIndex < 0) return {ok:false, error:"找不到这张牌"};
-    const card = player.hand.splice(cardIndex,1)[0]; player.actionsLeft -= 1;
-    if(card.type === "奥秘卡") player.secrets.push(card); else if(["武器","护具","防具","鞋","道具"].includes(card.type)) player.equipment.push(card); else room.discard.push(card);
-    appendLog(room, `${player.nickname} 使用了一张牌`); return {ok:true};
-  }
-  return {ok:false, error:"未知行动"};
 }
 
 // 从supabase读取id=1记录
@@ -336,8 +274,8 @@ io.on('connection', (socket)=>{
     const career = (memoryData.careers || []).find(item=>item.id === player.careerId);
     if(!career || !careerIsReady(player.careerId)) return callback({ok:false, error:"该职业卡牌尚未完成，暂未开放"});
     player.maxHp = Number(career.hp) || 8;
-    const room = createGameRoom(makeRoomCode(), player, requestedPlayers); rooms.set(room.roomCode, room); socket.join(room.roomCode); await saveGameRoom(room);
-    callback({ok:true, roomCode:room.roomCode, playerId:player.playerId, reconnectToken:player.reconnectToken, isHost:true}); emitRoom(room);
+    const room = createGameRoom(makeRoomCode(), player, requestedPlayers); rooms.set(room.roomCode, room); socket.join(room.roomCode);
+    callback({ok:true, roomCode:room.roomCode, playerId:player.playerId, reconnectToken:player.reconnectToken, isHost:true}); emitRoom(room); persistRoom(room);
   });
 
   socket.on("joinRoom", async ({roomCode, nickname, careerId} = {}, callback = ()=>{})=>{
@@ -347,10 +285,11 @@ io.on('connection', (socket)=>{
     if(room.phase !== "lobby") return callback({ok:false, error:"对局已经开始，不能中途加入"});
     if(room.players.length >= (room.maxPlayers || MAX_PLAYERS)) return callback({ok:false, error:"房间已满"});
     if(room.players.some(item=>item.nickname === cleanName)) return callback({ok:false, error:"昵称已被使用"});
-    if(room.players.some(item=>item.careerId === careerId)) return callback({ok:false, error:"该职业已被选择"});
+    // 已裁定：允许重复职业，每名玩家仍使用各自的独立牌库。
     const career = (memoryData.careers || []).find(item=>item.id === careerId); if(!career || !careerIsReady(careerId)) return callback({ok:false, error:"该职业卡牌尚未完成，暂未开放"});
     const player = {playerId:makeToken(), nickname:cleanName, careerId:String(careerId), reconnectToken:makeToken(), socketId:socket.id, connected:true, ready:false, hp:0, maxHp:Number(career.hp) || 8, score:0, resources:{}, position:null, actionsLeft:0, moved:false, hand:[], secrets:[], equipment:[], eliminated:false};
-    room.players.push(player); room.updatedAt=Date.now(); socket.join(room.roomCode); await saveGameRoom(room); callback({ok:true, roomCode:room.roomCode, playerId:player.playerId, reconnectToken:player.reconnectToken, isHost:false}); emitRoom(room);
+    room.players.push(player); room.updatedAt=Date.now(); socket.join(room.roomCode);
+    callback({ok:true, roomCode:room.roomCode, playerId:player.playerId, reconnectToken:player.reconnectToken, isHost:false}); emitRoom(room); persistRoom(room);
   });
 
   socket.on("reconnectRoom", async ({roomCode, reconnectToken} = {}, callback = ()=>{})=>{
@@ -360,21 +299,43 @@ io.on('connection', (socket)=>{
     player.socketId = socket.id; player.connected = true; socket.join(room.roomCode); callback({ok:true, roomCode:room.roomCode, playerId:player.playerId, reconnectToken:player.reconnectToken}); emitRoom(room);
   });
 
+  // 主动离开：等待阶段释放席位（房主顺延），对局中只标记掉线，避免破坏进行中的对局。
+  socket.on("leaveRoom", async ({roomCode, playerId} = {}, callback = ()=>{})=>{
+    const room = rooms.get(String(roomCode || "").toUpperCase());
+    const player = room?.players.find(item=>item.playerId === playerId);
+    if(!room || !player) return callback?.({ok:true});
+    player.connected = false; player.socketId = null; socket.leave(room.roomCode);
+    if(room.phase === "lobby"){
+      room.players = room.players.filter(item=>item.playerId !== playerId);
+      if(!room.players.length){ rooms.delete(room.roomCode); await deleteGameRoom(room.roomCode); return callback?.({ok:true}); }
+      if(room.hostId === playerId) room.hostId = room.players[0].playerId;
+      appendLog(room, `${player.nickname} 离开了房间`);
+    }
+    room.updatedAt = Date.now();
+    callback?.({ok:true});
+    emitRoom(room);
+    persistRoom(room);
+  });
+
   socket.on("readyRoom", async ({roomCode, playerId} = {}, callback = ()=>{})=>{
     const room = rooms.get(String(roomCode || "").toUpperCase()); const player = room?.players.find(item=>item.playerId === playerId);
-    if(!room || !player) return callback({ok:false, error:"房间或玩家不存在"}); player.ready = true; await saveGameRoom(room); callback({ok:true}); emitRoom(room);
+    if(!room || !player) return callback({ok:false, error:"房间或玩家不存在"}); player.ready = true; callback({ok:true}); emitRoom(room); persistRoom(room);
   });
 
-  socket.on("startRoom", async ({roomCode, playerId} = {}, callback = ()=>{})=>{
+  socket.on("startRoom", ({roomCode, playerId} = {}, callback = ()=>{}) => {
     const room = rooms.get(String(roomCode || "").toUpperCase());
     if(!room || room.hostId !== playerId || room.players.find(item=>item.playerId===playerId)?.socketId !== socket.id) return callback({ok:false, error:"只有房主可以开始"});
-    const result = startRoom(room); if(result.ok) await saveGameRoom(room); callback(result); emitRoom(room);
+    const result = startRoom(room);
+    if(result.ok){ room.updatedAt=Date.now(); emitRoom(room); persistRoom(room); }
+    callback(result);
   });
 
-  socket.on("gameAction", async ({roomCode, playerId, action} = {}, callback = ()=>{})=>{
+  socket.on("gameAction", ({roomCode, playerId, action} = {}, callback = ()=>{}) => {
     const room = rooms.get(String(roomCode || "").toUpperCase()); const player = room?.players.find(item=>item.playerId === playerId);
     const result = room && player && player.socketId === socket.id ? rulesEngine.act(room, player, action || {}, memoryData.careers || []) : {ok:false, error:"房间或玩家身份无效"};
-    if(result.ok){ room.updatedAt=Date.now(); await saveGameRoom(room); emitRoom(room); } callback(result);
+    // 先广播再落库：玩家不必等云端写入就能看到结果，写入按房间排队以保证顺序。
+    if(result.ok){ room.updatedAt=Date.now(); emitRoom(room); persistRoom(room); }
+    callback(result);
   });
 
   socket.on("updateAll", (newData)=>{

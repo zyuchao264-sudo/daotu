@@ -1,7 +1,8 @@
 .game{grid-template-columns:210px minmax(0,1fr) 290px;align-items:start}
 .board-wrap{min-height:0;min-width:0}
-.board{flex:none;height:clamp(320px,52vh,540px);min-height:0;overflow:hidden}
-.hex-map{width:100%;height:100%;min-width:0;filter:none}
+.board{flex:none;height:clamp(320px,52vh,540px);min-height:0;overflow:hidden;touch-action:none;cursor:grab}
+.board.panning,.board.panning .hex-cell{cursor:grabbing}
+.hex-map{width:100%;height:100%;min-width:0;filter:none;display:block}
 .map-toolbar{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin:8px 0 12px}
 .map-players{display:flex;gap:8px;flex-wrap:wrap;flex:1}
 .map-player{display:flex;align-items:center;gap:7px;text-align:left;padding:6px 9px;background:#203c36;border-color:#6b8370;box-shadow:none;font-size:12px}
@@ -9,12 +10,19 @@
 .map-player.selected{border-color:#ffe29a;box-shadow:0 0 0 2px #ffe29a44;background:#5d4929}
 .zoom-controls{display:flex;gap:5px;align-items:center}
 .zoom-controls button{padding:6px 10px;box-shadow:none}
+.pan-hint{font-size:11px;color:#bca98a;margin-right:4px;white-space:nowrap}
 #zoomLabel{min-width:45px;text-align:center;font-size:12px}
 .movement-panel{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-top:10px;padding:10px;background:#1b302b;border:1px solid #697452;border-radius:10px}
 .movement-panel span{font-size:12px;line-height:1.6;color:#f2dab0}
 .movement-panel button{flex:none;padding:8px 12px;font-size:12px}
 .map-pawn{cursor:pointer}
-.map-pawn:hover{filter:brightness(1.3)}
+.map-pawn:hover{filter:brightness(1.18)}
+.map-pawn.selected{filter:drop-shadow(0 0 5px #ffe29a)}
+.hex-icon-corner{font-size:12px;text-anchor:start;opacity:.9}
+.pawn-number{font-size:9px;stroke-width:0;fill:#fdf3d8}
+.claim-ring{pointer-events:none;stroke-dasharray:7 5}
+.claim-badge{pointer-events:none}
+.claim-badge text{font-size:10px;fill:#fdf3d8;stroke-width:0}
 .actionbar{padding-top:12px;border-top:1px solid #80684755;gap:7px}
 .actionbar button,.actionbar select{box-shadow:none}
 .right{max-height:calc(100vh - 110px);overflow:auto}

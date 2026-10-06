@@ -20,40 +20,135 @@ const TERRAIN = {
   holySpring:{name:"圣泉",icon:"✴",color:"#91cbc0"},
   void:{name:"虚空",icon:"◆",color:"#68588b"},
   fire:{name:"地火",icon:"♨",color:"#a24e35"},
-  goldMine:{name:"金矿",icon:"✦",color:"#ae9042"},
+  goldMine:{name:"金矿",icon:"❖",color:"#ae9042"},
   trial:{name:"生存试炼",icon:"★",color:"#ae793d"}
 };
 const SUPPORTED_CARDS = new Set(["止血绷带","舔舐伤口","狩猎","整备","前进","召唤猎狗","隐秘行踪","战术瞄准","猎狗进化","金盆洗手","黑金","黑市交易","投资军火","瞄准射击","放暗箭","轻便草鞋","草药","轻皮衣","黑大衣","马车","钱是万能的","换取筹码","哪有赌徒天天输","贷款","好运or厄运","逃跑是门技术","撒钱","止痛药","打吊水","假意示弱","空头支票"]);
 let selectedTileId = null;
 let selectedPlayerId = null;
+const MAP_FIT = 960;          // 100% 缩放时短边的 viewBox 边长，恰好容纳整张地图
+const MAP_PADDING = 45;       // 六角格半宽 41 / 半高 35.5 之外再留一点余量
+const MAP_MIN_ZOOM = 0.75;
+const MAP_MAX_ZOOM = 3;
+const MAP_ZOOM_STEP = 0.25;
+const MAP_HOME = {x:450,y:450}; // 127 格地图的几何中心
 let mapZoom = 1;
-let mapCenter = {x:450,y:450};
+let mapCenter = {...MAP_HOME};
+let mapBounds = {minX:MAP_HOME.x-410,maxX:MAP_HOME.x+410,minY:MAP_HOME.y-421,maxY:MAP_HOME.y+421};
 const layoutStyle=document.createElement('link');
 layoutStyle.rel='stylesheet';layoutStyle.href='/game-layout.css';document.head.append(layoutStyle);
 const mapToolbar=document.createElement('div');
 mapToolbar.className='map-toolbar';
-mapToolbar.innerHTML='<div id="mapPlayers" class="map-players"></div><div class="zoom-controls"><button id="zoomOut" aria-label="缩小地图">−</button><span id="zoomLabel">100%</span><button id="zoomIn" aria-label="放大地图">＋</button><button id="zoomReset">全图</button></div>';
+mapToolbar.innerHTML='<div id="mapPlayers" class="map-players"></div><div class="zoom-controls"><span class="pan-hint">按住右键拖动地图（左键/中键同样可拖动）</span><button id="zoomOut" aria-label="缩小地图">−</button><span id="zoomLabel">100%</span><button id="zoomIn" aria-label="放大地图">＋</button><button id="zoomReset">全图</button></div>';
 $('board').before(mapToolbar);
 const movementPanel=document.createElement('div');
 movementPanel.className='movement-panel';
 movementPanel.innerHTML='<span id="movementHint">先选择自己的角色</span><button id="confirmMove" disabled>移动到选中格</button>';
 $('board').after(movementPanel);
+// 让 viewBox 与棋盘实际宽高比一致：既避免留白，也让拖动时横纵换算一致。
+function boardAspect(){
+  const rect=$('board').getBoundingClientRect();
+  const width=rect.width>0?rect.width:900, height=rect.height>0?rect.height:900;
+  return Math.min(4,Math.max(.6,width/height));
+}
+function mapViewSize(){
+  const height=MAP_FIT/mapZoom;
+  return {width:height*boardAspect(),height};
+}
+// 地图比视野大时只能在图内平移；比视野小时保持居中，避免把地图拖出屏幕丢失。
+function clampMapCenter(view){
+  const {minX,maxX,minY,maxY}=mapBounds;
+  const centerX=(minX+maxX)/2, centerY=(minY+maxY)/2;
+  mapCenter.x=(maxX-minX)<=view.width?centerX:Math.min(Math.max(mapCenter.x,minX+view.width/2),maxX-view.width/2);
+  mapCenter.y=(maxY-minY)<=view.height?centerY:Math.min(Math.max(mapCenter.y,minY+view.height/2),maxY-view.height/2);
+}
 function updateMapView(){
   const svg=$('board').querySelector('svg');
-  const extent=960/mapZoom;
-  if(svg)svg.setAttribute('viewBox',`${mapCenter.x-extent/2} ${mapCenter.y-extent/2} ${extent} ${extent}`);
+  const view=mapViewSize();
+  clampMapCenter(view);
+  if(svg)svg.setAttribute('viewBox',`${mapCenter.x-view.width/2} ${mapCenter.y-view.height/2} ${view.width} ${view.height}`);
   $('zoomLabel').textContent=`${Math.round(mapZoom*100)}%`;
 }
-$('zoomIn').onclick=()=>{mapZoom=Math.min(3,mapZoom+.25);updateMapView()};
-$('zoomOut').onclick=()=>{mapZoom=Math.max(.75,mapZoom-.25);updateMapView()};
-$('zoomReset').onclick=()=>{mapZoom=1;mapCenter={x:450,y:450};updateMapView()};
+// 像素位移换算成 viewBox 用户单位：交给浏览器算，preserveAspectRatio 的留白与缩放都自动包含。
+function panMapByPixels(deltaX,deltaY){
+  const svg=$('board').querySelector('svg');
+  if(!svg)return;
+  const matrix=svg.getScreenCTM();
+  if(!matrix||!matrix.a||!matrix.d)return;
+  mapCenter.x-=deltaX/matrix.a;
+  mapCenter.y-=deltaY/matrix.d;
+  updateMapView();
+}
+const PAN_DRAG_THRESHOLD=6; // 位移超过该值才算拖动，否则仍然是一次选格点击
+const boardElement=$('board');
+let mapDrag=null;
+let suppressMapClick=false;
+function endMapDrag(event){
+  if(!mapDrag||(event&&event.pointerId!==mapDrag.pointerId))return;
+  const {moved,button}=mapDrag;
+  mapDrag=null;
+  boardElement.classList.remove('panning');
+  if(moved&&button===0)suppressMapClick=true; // 左键拖动后不要顺带选中地块
+}
+boardElement.addEventListener('contextmenu',event=>event.preventDefault());
+// 中键在 Windows 会触发自动滚动，必须显式阻止，否则拖动会失效。
+boardElement.addEventListener('mousedown',event=>{if(event.button===1)event.preventDefault()});
+boardElement.addEventListener('pointerdown',event=>{
+  if(event.pointerType==="mouse"&&event.button!==0&&event.button!==1&&event.button!==2)return;
+  if(!boardElement.querySelector('svg'))return;
+  if(event.button!==0)event.preventDefault();
+  suppressMapClick=false;
+  mapDrag={pointerId:event.pointerId,button:event.button,startX:event.clientX,startY:event.clientY,lastX:event.clientX,lastY:event.clientY,moved:false};
+});
+// 用 window 监听而不是 setPointerCapture：指针捕获会把 click 重定向到捕获元素，导致点不到地块。
+window.addEventListener('pointermove',event=>{
+  if(!mapDrag||event.pointerId!==mapDrag.pointerId)return;
+  if(!mapDrag.moved){
+    if(Math.abs(event.clientX-mapDrag.startX)<PAN_DRAG_THRESHOLD&&Math.abs(event.clientY-mapDrag.startY)<PAN_DRAG_THRESHOLD)return;
+    mapDrag.moved=true;
+    boardElement.classList.add('panning');
+  }
+  const deltaX=event.clientX-mapDrag.lastX, deltaY=event.clientY-mapDrag.lastY;
+  mapDrag.lastX=event.clientX;mapDrag.lastY=event.clientY;
+  if(!deltaX&&!deltaY)return;
+  event.preventDefault();
+  panMapByPixels(deltaX,deltaY);
+});
+window.addEventListener('pointerup',endMapDrag);
+window.addEventListener('pointercancel',endMapDrag);
+boardElement.addEventListener('click',event=>{
+  if(!suppressMapClick)return;
+  suppressMapClick=false;
+  event.stopPropagation();
+  event.preventDefault();
+},true);
+// 返回大厅：先让服务端释放席位（等待阶段房主顺延），再清理本地凭证。
+const leaveButton=$('leave');
+if(leaveButton)leaveButton.onclick=()=>{
+  let settled=false;
+  const finish=()=>{
+    if(settled)return;
+    settled=true;
+    localStorage.removeItem('daotu.playerId');
+    localStorage.removeItem('daotu.roomCode');
+    localStorage.removeItem('daotu.reconnectToken');
+    location.reload();
+  };
+  if(!socket.connected||!roomCode||!meId)return finish();
+  socket.emit("leaveRoom",{roomCode,playerId:meId},finish);
+  setTimeout(finish,800);
+};
+window.addEventListener('resize',()=>updateMapView());
+$('zoomIn').onclick=()=>{mapZoom=Math.min(MAP_MAX_ZOOM,mapZoom+MAP_ZOOM_STEP);updateMapView()};
+$('zoomOut').onclick=()=>{mapZoom=Math.max(MAP_MIN_ZOOM,mapZoom-MAP_ZOOM_STEP);updateMapView()};
+$('zoomReset').onclick=()=>{mapZoom=1;mapCenter={...MAP_HOME};updateMapView()};
 function selectMapPlayer(playerId){
   selectedPlayerId=playerId;
   const publicState=state?.public;
   const player=publicState?.players.find(item=>item.playerId===playerId);
   if(!player)return;
   const tile=publicState.tiles.find(item=>item.id===player.position);
-  if(tile&&mapZoom>1)mapCenter={x:450+61.5*tile.q,y:450+71*tile.r+35.5*tile.q};
+  if(tile&&mapZoom>1)mapCenter=hexCenter(tile);
   renderMap(publicState,publicState.players.find(item=>item.playerId===meId));
 }
 $('confirmMove').onclick=()=>{
@@ -86,28 +181,80 @@ function renderLobby(publicState){
   $('start').disabled=publicState.players.length!==target;
   notice('lobbyNotice',publicState.players.length<target?`还需要 ${target-publicState.players.length} 名玩家。`:'人数已到齐，可以开始。');
 }
+function hexCenter(tile){return {x:MAP_HOME.x+61.5*tile.q,y:MAP_HOME.y+71*tile.r+35.5*tile.q}}
+// 每名玩家一个固定颜色，地图棋子、占领标记与角色栏共用，方便一眼对应。
+const PLAYER_COLORS=["#f0c04a","#63b8d6","#e0806d","#8fd07a","#c69ae0","#e6df7c"];
+function playerColor(publicState,playerId){
+  const index=publicState.players.findIndex(player=>player.playerId===playerId);
+  return PLAYER_COLORS[(index<0?0:index)%PLAYER_COLORS.length];
+}
+function roleImageUrl(careerId){return ROLE_IMAGES[careerId]||null}
+// 棋子布局：单人居中，2~3 人横向排开，更多人分两行，始终围绕格子中心且不超出六角格。
+function pawnLayout(count){
+  if(count<=1)return [{x:0,y:0,r:18}];
+  if(count<=3){const r=12.5,step=r*2.02;return Array.from({length:count},(_,index)=>({x:(index-(count-1)/2)*step,y:0,r}))}
+  const r=10.5,step=r*2.02,perRow=Math.ceil(count/2),positions=[];
+  for(let index=0;index<count;index++){
+    const row=Math.floor(index/perRow);
+    const inRow=Math.min(perRow,count-row*perRow);
+    const column=index-row*perRow;
+    positions.push({x:(column-(inRow-1)/2)*step,y:(row===0?-1:1)*r*0.95,r});
+  }
+  return positions;
+}
+// 地图内容包围盒：用于把平移限制在图内，避免把整张地图拖出视野。
+function mapBoundsFor(tiles){
+  if(!tiles.length)return {minX:MAP_HOME.x-410,maxX:MAP_HOME.x+410,minY:MAP_HOME.y-421,maxY:MAP_HOME.y+421};
+  const points=tiles.map(hexCenter);
+  return {
+    minX:Math.min(...points.map(point=>point.x))-MAP_PADDING,
+    maxX:Math.max(...points.map(point=>point.x))+MAP_PADDING,
+    minY:Math.min(...points.map(point=>point.y))-MAP_PADDING,
+    maxY:Math.max(...points.map(point=>point.y))+MAP_PADDING
+  };
+}
 function renderMap(publicState, player){
   const tiles=publicState.tiles||[];
+  mapBounds=mapBoundsFor(tiles);
   const hexPoints="-41,0 -20.5,-35.5 20.5,-35.5 41,0 20.5,35.5 -20.5,35.5";
+  const innerPoints="-37,0 -18.5,-32 18.5,-32 37,0 18.5,32 -18.5,32";
+  const clipDefs=[];
   const cells=tiles.map(tile=>{
-    const x=450+61.5*tile.q;
-    const y=450+71*tile.r+35.5*tile.q;
+    const {x,y}=hexCenter(tile);
     const terrain=TERRAIN[tile.type]||TERRAIN.plain;
     const occupants=publicState.players.filter(item=>item.position===tile.id&&!item.eliminated);
     const building=tile.building;
     const selected=selectedTileId===tile.id?" selected":"";
     const icon=building?"⌂":tile.feature==="forge"?"⚒":terrain.icon;
-    const marker=occupants.map((occupant,index)=>{
+    // 有人站上去时，地形图标缩小移到左上角，把格子中央让给棋子，同时保留地形辨识。
+    const iconMarkup=occupants.length
+      ? `<text class="hex-icon hex-icon-corner" x="-30" y="-20">${icon}</text>`
+      : `<text class="hex-icon" y="5">${icon}</text>`;
+    const positions=pawnLayout(occupants.length);
+    const pawns=occupants.map((occupant,index)=>{
       const number=publicState.players.indexOf(occupant)+1;
-      const offset=(index-(occupants.length-1)/2)*18;
-      return `<g data-map-player="${esc(occupant.playerId)}" class="map-pawn"><title>${esc(occupant.nickname)} · ${esc(tile.id)}</title><circle cx="${offset}" cy="-20" r="13" fill="${occupant.playerId===selectedPlayerId?'#ffe29a':'#244d48'}" stroke="#ffe29a" stroke-width="2"/><text class="hex-count" x="${offset}" y="-16">${number}</text></g>`;
+      const {x:cx,y:cy,r}=positions[index];
+      const color=playerColor(publicState,occupant.playerId);
+      const isSelected=occupant.playerId===selectedPlayerId;
+      const url=roleImageUrl(occupant.careerId);
+      let face="";
+      if(url){
+        const clipId=`pawn-${String(occupant.playerId).replace(/[^a-zA-Z0-9_-]/g,"")}-${index}`;
+        clipDefs.push(`<clipPath id="${clipId}"><circle cx="${cx}" cy="${cy}" r="${Math.max(4,r-1.6)}"/></clipPath>`);
+        face=`<image href="${url}" x="${cx-r}" y="${cy-r}" width="${r*2}" height="${r*2}" preserveAspectRatio="xMidYMid slice" clip-path="url(#${clipId})"/>`;
+      }
+      const badgeR=Math.max(6,r*0.52),badgeX=cx+r*0.74,badgeY=cy+r*0.74;
+      return `<g data-map-player="${esc(occupant.playerId)}" class="map-pawn${isSelected?" selected":""}"><title>${esc(occupant.nickname)} · ${esc(tile.id)}</title><circle cx="${cx}" cy="${cy}" r="${r}" fill="#1d2f2b" stroke="${isSelected?"#ffe29a":color}" stroke-width="${isSelected?3.4:2.6}"/>${face}<circle cx="${badgeX}" cy="${badgeY}" r="${badgeR}" fill="#141a19" stroke="${color}" stroke-width="1.4"/><text class="hex-count pawn-number" x="${badgeX}" y="${badgeY+3.4}">${number}</text></g>`;
     }).join('');
-    return `<g class="hex-cell${selected}" data-tile="${esc(tile.id)}" transform="translate(${x} ${y})"><polygon points="${hexPoints}" fill="${terrain.color}" stroke="#3f523d" stroke-width="1.2"/><polygon points="-37,0 -18.5,-32 18.5,-32 37,0 18.5,32 -18.5,32" fill="none" stroke="#ffeec0" stroke-opacity=".14"/><text class="hex-icon" y="5">${icon}</text>${marker}${tile.resource?'<circle cx="-24" cy="-20" r="5" fill="#f3d88b"/>':''}</g>`;
+    const claim=tile.claim;
+    const claimColor=claim?playerColor(publicState,claim.playerId):"";
+    const claimMarkup=claim?`<polygon class="claim-ring" points="${innerPoints}" fill="none" stroke="${claimColor}" stroke-width="3" stroke-opacity=".92"><title>大金矿占领：${esc(claim.nickname||"")}，剩余 ${claim.roundsLeft} 回合</title></polygon><g class="claim-badge"><rect x="-21" y="-35" width="42" height="17" rx="8.5" fill="#141a19" stroke="${claimColor}" stroke-width="1.8"/><circle cx="-11" cy="-26.5" r="5.4" fill="${claimColor}"/><text class="hex-count pawn-number" x="-11" y="-23.9">${publicState.players.findIndex(item=>item.playerId===claim.playerId)+1}</text><text class="hex-count" x="7" y="-22.4">⛏${claim.roundsLeft}</text></g>`:'';
+    return `<g class="hex-cell${selected}" data-tile="${esc(tile.id)}" transform="translate(${x} ${y})"><polygon points="${hexPoints}" fill="${terrain.color}" stroke="#3f523d" stroke-width="1.2"/><polygon points="${innerPoints}" fill="none" stroke="#ffeec0" stroke-opacity=".14"/>${iconMarkup}${claimMarkup}${pawns}${tile.resource?'<circle cx="-24" cy="-20" r="5" fill="#f3d88b"/>':''}</g>`;
   }).join('');
-  $('board').innerHTML=`<svg class="hex-map" viewBox="0 0 900 900" role="img" aria-label="127 格六角战棋地图"><defs><filter id="mapNoise"><feTurbulence type="fractalNoise" baseFrequency=".045" numOctaves="2" seed="6"/><feColorMatrix values="0 0 0 0 0.12 0 0 0 0 0.14 0 0 0 0 0.09 0 0 0 .17 0"/></filter></defs><rect width="900" height="900" fill="#244d48"/>${cells}<rect width="900" height="900" filter="url(#mapNoise)" pointer-events="none" opacity=".16"/></svg>`;
+  $('board').innerHTML=`<svg class="hex-map" viewBox="0 0 900 900" role="img" aria-label="127 格六角战棋地图"><defs><filter id="mapNoise"><feTurbulence type="fractalNoise" baseFrequency=".045" numOctaves="2" seed="6"/><feColorMatrix values="0 0 0 0 0.12 0 0 0 0 0.14 0 0 0 0 0.09 0 0 0 .17 0"/></filter>${clipDefs.join('')}</defs><rect width="900" height="900" fill="#244d48"/>${cells}<rect width="900" height="900" filter="url(#mapNoise)" pointer-events="none" opacity=".16"/></svg>`;
   $('board').querySelectorAll('[data-tile]').forEach(cell=>cell.onclick=()=>selectTile(cell.dataset.tile));
   $('board').querySelectorAll('[data-map-player]').forEach(marker=>marker.onclick=event=>{event.stopPropagation();selectMapPlayer(marker.dataset.mapPlayer)});
-  $('mapPlayers').innerHTML=publicState.players.map((item,index)=>`<button class="map-player ${item.playerId===selectedPlayerId?'selected':''}" data-select-player="${esc(item.playerId)}"><span class="avatar">${roleImage(item.careerId)}</span><span><b>${index+1} · ${esc(item.nickname)}${item.playerId===meId?'（我）':''}</b><small>${item.eliminated?'已淘汰':`坐标 ${esc(item.position||'未出生')}`}${item.playerId===publicState.currentPlayerId?' · 当前回合':''}</small></span></button>`).join('');
+  $('mapPlayers').innerHTML=publicState.players.map((item,index)=>`<button class="map-player ${item.playerId===selectedPlayerId?'selected':''}" style="border-left:4px solid ${playerColor(publicState,item.playerId)}" data-select-player="${esc(item.playerId)}"><span class="avatar">${roleImage(item.careerId)}</span><span><b>${index+1} · ${esc(item.nickname)}${item.playerId===meId?'（我）':''}</b><small>${item.eliminated?'已淘汰':`坐标 ${esc(item.position||'未出生')}`}${item.playerId===publicState.currentPlayerId?' · 当前回合':''}${item.goldMine?.roundsLeft>0?` · 大金矿剩 ${item.goldMine.roundsLeft} 回合`:''}</small></span></button>`).join('');
   $('mapPlayers').querySelectorAll('[data-select-player]').forEach(button=>button.onclick=()=>selectMapPlayer(button.dataset.selectPlayer));
   const ownSelected=selectedPlayerId===meId;
   const myTurn=publicState.phase==='playing'&&publicState.currentPlayerId===meId&&!player?.eliminated;
@@ -117,7 +264,8 @@ function renderMap(publicState, player){
   updateMapView();
   const selected=tiles.find(tile=>tile.id===selectedTileId);
   const terrain=selected&&(TERRAIN[selected.type]||TERRAIN.plain);
-  $('boardHint').textContent=selected?`${terrain.name} · ${selected.id}${selected.feature==="forge"?" · 铁匠铺":""}${selected.building?` · ${selected.building.name}（产出 ${selected.building.output}）`:''}${selected.resource?' · 有资源':''}。点击地图格可移动或选定目标。`:'点击相邻地块移动，或先掷移动骰；地图格之间已紧密拼接。';
+  const claimText=selected?.claim?` · 大金矿已被 ${esc(selected.claim.nickname||"")} 占领（剩余 ${selected.claim.roundsLeft} 回合）`:selected?.type==="goldMine"?" · 大金矿可占领，进入即占领并连续 3 回合每回合结束获得 2 金":"";
+  $('boardHint').textContent=selected?`${terrain.name} · ${selected.id}${selected.feature==="forge"?" · 铁匠铺":""}${selected.building?` · ${selected.building.name}（产出 ${selected.building.output}）`:''}${selected.resource?' · 有资源':''}${claimText}。点击地图格可移动或选定目标。`:'点击相邻地块移动，或先掷移动骰；地图格之间已紧密拼接；按住右键可拖动地图。';
 }
 function selectTile(tileId){
   selectedTileId=tileId;
@@ -136,13 +284,22 @@ function renderGame(payload){
   $('roomBadge').textContent=`房间 ${publicState.roomCode} · ${publicState.maxPlayers||5} 人`;
   $('turn').textContent=playing?`第 ${publicState.round} 轮 · ${publicState.players.find(player=>player.playerId===publicState.currentPlayerId)?.nickname||''} 的回合`:
     `对局已结束 · ${publicState.winner?.type==="manual"?"房主手动结束":publicState.winner?.nickname?"胜者："+publicState.winner.nickname:"无胜者"}`;
-  const attackRange=me?.careerId==="merchant"&&me.talent2==="b"?3:(me?.careerId==="hunter"&&me.talent2==="b"||me?.aimUntilRound>publicState.round?1:0);
+  const attackRange=me?.attackRange??0;
   $('players').innerHTML=publicState.players.map(player=>`<div class="player ${player.playerId===publicState.currentPlayerId?'current':''}"><div class="avatar">${roleImage(player.careerId)}</div><div class="player-main"><div class="player-name">${esc(player.nickname)} ${player.eliminated?'· 已淘汰':''}</div><div class="player-meta">${esc(careers.find(career=>career.id===player.careerId)?.name||'')} · ❤ ${player.hp}/${player.maxHp} · ★ ${player.score} · 手牌 ${player.handCount}</div></div>${myTurn&&player.playerId!==meId&&!player.eliminated&&hexDistance(player.position,me?.position)<=attackRange?`<button data-attack="${player.playerId}">攻击</button>`:''}</div>`).join('');
   $('players').querySelectorAll('[data-attack]').forEach(button=>button.onclick=()=>send({type:"attack",targetPlayerId:button.dataset.attack,resourceChoice:$('resourceChoice')?.value}));
   $('log').innerHTML=publicState.log.slice().reverse().map(entry=>`<div>${esc(entry.message)}</div>`).join('');
   renderMap(publicState,me);
   const resourceLabels={wood:"木",stone:"石",meat:"肉",gold:"金",special:"专属"};
-  $('me').innerHTML=me?`<div class="player"><div class="avatar">${roleImage(me.careerId)}</div><div><b>${esc(me.nickname)}</b><div class="status">${esc(careers.find(career=>career.id===me.careerId)?.name||'')}</div></div></div><div class="resource-row">${Object.entries(me.resources||{}).map(([key,value])=>`<span class="resource">${resourceLabels[key]||key} <b>${value}</b></span>`).join('')}</div><div class="status">❤ ${me.hp}/${me.maxHp}　★ ${me.score}　行动 ${me.actionsLeft}　移动点 ${me.movePoints??"待掷骰"}</div><div class="status">行动牌库 ${payload.private.deckCount} · 装备牌库 ${payload.private.equipmentDeckCount} · 奥秘 ${me.secretCount}</div><div class="status">已装备：${me.equipment?.length?me.equipment.map(card=>esc(card.name)).join('、'):'无'}${me.dog?'、猎狗':''}</div>`:'';
+  const career=careers.find(item=>item.id===me?.careerId);
+  const talentText=level=>{
+    const branch=level===2?me?.talent2:me?.talent3;
+    if(!branch)return "未学习";
+    return `${esc(career?.[`lv${level}${branch}Name`]||branch.toUpperCase())}（${branch.toUpperCase()}）`;
+  };
+  const goldMineText=me?.goldMine?.roundsLeft>0
+    ? `占领中 · 剩余 ${me.goldMine.roundsLeft} 回合 · 已获得 ${me.goldMineCollected||0} 金`
+    : `未占领${me?.goldMineCollected?` · 本局累计获得 ${me.goldMineCollected} 金`:''}`;
+  $('me').innerHTML=me?`<div class="player"><div class="avatar">${roleImage(me.careerId)}</div><div><b>${esc(me.nickname)}</b><div class="status">${esc(career?.name||'')} · 攻击范围 ${attackRange}</div></div></div><div class="resource-row">${Object.entries(me.resources||{}).map(([key,value])=>`<span class="resource">${resourceLabels[key]||key} <b>${value}</b></span>`).join('')}</div><div class="status">❤ ${me.hp}/${me.maxHp}　★ ${me.score}　行动 ${me.actionsLeft}　移动点 ${me.movePoints??"待掷骰"}</div><div class="status">行动牌库 ${payload.private.deckCount} · 装备牌库 ${payload.private.equipmentDeckCount} · 奥秘 ${me.secretCount}</div><div class="status">已装备：${me.equipment?.length?me.equipment.map(card=>esc(card.name)).join('、'):'无'}${me.dog?'、猎狗':''}</div><div class="status">大金矿：${goldMineText}</div><div class="status">天赋：二级 ${talentText(2)}　三级 ${talentText(3)}</div>${career?.passive0?`<div class="status">被动：${esc(career.passive0)}</div>`:''}`:'';
   $('hand').innerHTML=(payload.private.hand||[]).map(card=>{
     const supported=SUPPORTED_CARDS.has(card.name);
     return `<div><button class="card ${supported?'':'unsupported'}" data-card="${esc(card.uid)}" ${supported&&myTurn?'':'disabled'}><strong>${esc(card.name)}</strong><small>${esc(card.type)} · ${esc(card.cost)}</small><p>${esc(card.effect)}</p>${supported?'':'<small>效果待接入</small>'}</button>${myTurn?`<button class="secondary" data-discard="${esc(card.uid)}" style="margin-top:3px;width:100%">弃置</button>`:''}</div>`;
@@ -153,9 +310,28 @@ function renderGame(payload){
   const buildingOptions=`<select id="buildingType"><option value="career">专属建筑</option><option value="lumber">伐木场</option><option value="quarry">采石场</option><option value="ranch">牧场</option><option value="mine">金矿场</option></select>`;
   const targetOptions=`<select id="targetPlayer"><option value="">选择目标玩家</option>${publicState.players.filter(player=>!player.eliminated).map(player=>`<option value="${esc(player.playerId)}">${esc(player.nickname)}${player.playerId===meId?"（自己）":""}</option>`).join('')}</select>`;
   const resourceOptions=`<select id="resourceChoice"><option value="wood">木</option><option value="stone">石</option><option value="meat">肉</option><option value="gold">金</option></select><input id="resourceAmount" type="number" min="1" max="10" value="1" title="置换数量" style="width:64px;background:#1b2523;color:#fff4d9;border:1px solid #b19059;border-radius:8px;padding:8px">`;
-  $('actionbar').innerHTML=playing?`${actionButton("掷移动骰","rollMove")}${actionButton("结束移动","stopMove","secondary")}${actionButton("额外移动","extraMove")}${actionButton("抽牌","draw")}${actionButton("抽两张 · 1肉","drawExtra")}${actionButton("铁匠铺抽装备","forge")}${targetOptions}${resourceOptions}${buildingOptions}${actionButton("建造选中格","build")}${actionButton("收获选中格","harvest")}${actionButton("抢夺选中格","raid")}${actionButton("泉水恢复","spring")}${actionButton("二级天赋 A","upgrade2a")}${actionButton("二级天赋 B","upgrade2b")}${actionButton("三级天赋 A","upgrade3a")}${actionButton("三级天赋 B","upgrade3b")}${actionButton("开始试炼","trial")}${actionButton("结束回合","endTurn","secondary")}${publicState.hostId===meId?actionButton("结束对局","endGame","danger"):''}`:'';
+  // 天赋按钮按角色实际天赋名、费用与实现状态生成；未接入的天赋按钮禁用并给出原因，避免白花资源。
+  const talentButtons=()=>{
+    if(!me)return '';
+    const support=me.talentSupport||{2:{},3:{}};
+    return [2,3].flatMap(level=>["a","b"].map(branch=>{
+      const name=career?.[`lv${level}${branch}Name`];
+      if(!name)return '';
+      const cost=(level===2?career[`lv2${branch}Cost`]:career.lv3Cost)||"无";
+      const owned=(level===2?me.talent2:me.talent3)===branch;
+      const supported=support[level]?.[branch]!==false;
+      const locked=owned||!supported;
+      const title=owned?"已学习":supported?"":'此天赋效果尚未接入，暂时无法升级';
+      return `<button data-action="upgrade${level}${branch}" data-locked="${locked?1:0}" title="${esc(title)}" class="${supported?"":"secondary"}">${level===2?"二级":"三级"} ${esc(name)} · ${esc(cost)}${supported?"":"（待接入）"}</button>`;
+    })).join('');
+  };
+  const rerollButton=me&&me.careerId==="gambler"&&(me.rerollLeft||0)>0&&me.movePoints!=null&&!me.moveSpent
+    ?actionButton(`重投移动骰 · 剩 ${me.rerollLeft} 次`,"rerollMove")
+    :'';
+  const forcedRaid=me?.careerId==="merchant"&&me.talent3==="b";
+  $('actionbar').innerHTML=playing?`${actionButton("掷移动骰","rollMove")}${rerollButton}${actionButton("结束移动","stopMove","secondary")}${actionButton("额外移动","extraMove")}${actionButton("抽牌","draw")}${actionButton("抽两张 · 1肉","drawExtra")}${actionButton("铁匠铺抽装备","forge")}${targetOptions}${resourceOptions}${buildingOptions}${actionButton("建造选中格","build")}${actionButton("收获选中格","harvest")}${actionButton(forcedRaid?"强制征税选中格 · 2铜币":"抢夺选中格","raid")}${actionButton("泉水恢复","spring")}${talentButtons()}${actionButton("开始试炼","trial")}${actionButton("结束回合","endTurn","secondary")}${publicState.hostId===meId?actionButton("结束对局","endGame","danger"):''}`:'';
   $('actionbar').querySelectorAll('[data-action]').forEach(button=>{
-    button.disabled=!myTurn&&button.dataset.action!=="endGame";
+    button.disabled=button.dataset.locked==="1"||(!myTurn&&button.dataset.action!=="endGame");
     button.onclick=()=>dispatchAction(button.dataset.action);
   });
   if(!playing)notice('gameNotice','本局已结束，地图和记录保留供查看。');
@@ -182,4 +358,29 @@ trialDialog.addEventListener("close",()=>{
   const form=trialDialog.querySelector("form");
   const resources=Object.fromEntries(["wood","stone","meat","gold","special"].map(key=>[key,Number(form.elements[key].value)]));
   send({type:"trial",resources});
+});
+// 发送行动时给出“处理中”提示，避免网络慢时重复点击；收到回执或超时后更新提示。
+let pendingActionTimer=null;
+send=action=>{
+  notice('gameNotice','处理中…');
+  clearTimeout(pendingActionTimer);
+  pendingActionTimer=setTimeout(()=>notice('gameNotice','服务器响应较慢，请稍候或检查网络'),8000);
+  socket.emit('gameAction',{roomCode,playerId:meId,action},reply=>{
+    clearTimeout(pendingActionTimer);
+    if(!reply?.ok)notice('gameNotice',reply?.error||'操作失败');
+    else notice('gameNotice',reply.roll?`本次移动点数：${reply.roll}`:'');
+  });
+};
+// 断线重连或刷新页面后自动恢复上一局；连接恢复时也重新向服务端登记 socket，否则收不到状态。
+socket.on('connect',()=>{
+  if(!token||!roomCode)return;
+  socket.emit('reconnectRoom',{roomCode,reconnectToken:token},reply=>{
+    if(!reply?.ok){
+      localStorage.removeItem('daotu.reconnectToken');
+      return;
+    }
+    handleReply(reply);
+    $('auth').classList.add('hidden');
+    setStatus(state?'连接已恢复':'已自动恢复到上一局');
+  });
 });
