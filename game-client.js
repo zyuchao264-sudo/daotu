@@ -25,7 +25,40 @@ const TERRAIN = {
 };
 const SUPPORTED_CARDS = new Set(["止血绷带","舔舐伤口","狩猎","整备","前进","召唤猎狗","隐秘行踪","战术瞄准","猎狗进化","金盆洗手","黑金","黑市交易","投资军火","瞄准射击","放暗箭","轻便草鞋","草药","轻皮衣","黑大衣","马车","钱是万能的","换取筹码","哪有赌徒天天输","贷款","好运or厄运","逃跑是门技术","撒钱","止痛药","打吊水","假意示弱","空头支票"]);
 let selectedTileId = null;
-let targetMode = "move";
+let selectedPlayerId = null;
+let mapZoom = 1;
+let mapCenter = {x:450,y:450};
+const layoutStyle=document.createElement('link');
+layoutStyle.rel='stylesheet';layoutStyle.href='/game-layout.css';document.head.append(layoutStyle);
+const mapToolbar=document.createElement('div');
+mapToolbar.className='map-toolbar';
+mapToolbar.innerHTML='<div id="mapPlayers" class="map-players"></div><div class="zoom-controls"><button id="zoomOut" aria-label="缩小地图">−</button><span id="zoomLabel">100%</span><button id="zoomIn" aria-label="放大地图">＋</button><button id="zoomReset">全图</button></div>';
+$('board').before(mapToolbar);
+const movementPanel=document.createElement('div');
+movementPanel.className='movement-panel';
+movementPanel.innerHTML='<span id="movementHint">先选择自己的角色</span><button id="confirmMove" disabled>移动到选中格</button>';
+$('board').after(movementPanel);
+function updateMapView(){
+  const svg=$('board').querySelector('svg');
+  const extent=960/mapZoom;
+  if(svg)svg.setAttribute('viewBox',`${mapCenter.x-extent/2} ${mapCenter.y-extent/2} ${extent} ${extent}`);
+  $('zoomLabel').textContent=`${Math.round(mapZoom*100)}%`;
+}
+$('zoomIn').onclick=()=>{mapZoom=Math.min(3,mapZoom+.25);updateMapView()};
+$('zoomOut').onclick=()=>{mapZoom=Math.max(.75,mapZoom-.25);updateMapView()};
+$('zoomReset').onclick=()=>{mapZoom=1;mapCenter={x:450,y:450};updateMapView()};
+function selectMapPlayer(playerId){
+  selectedPlayerId=playerId;
+  const publicState=state?.public;
+  const player=publicState?.players.find(item=>item.playerId===playerId);
+  if(!player)return;
+  const tile=publicState.tiles.find(item=>item.id===player.position);
+  if(tile&&mapZoom>1)mapCenter={x:450+61.5*tile.q,y:450+71*tile.r+35.5*tile.q};
+  renderMap(publicState,publicState.players.find(item=>item.playerId===meId));
+}
+$('confirmMove').onclick=()=>{
+  if(selectedPlayerId===meId&&selectedTileId)send({type:'move',tileId:selectedTileId});
+};
 
 function roleImage(careerId){
   const image = ROLE_IMAGES[careerId];
@@ -64,21 +97,30 @@ function renderMap(publicState, player){
     const building=tile.building;
     const selected=selectedTileId===tile.id?" selected":"";
     const icon=building?"⌂":tile.feature==="forge"?"⚒":terrain.icon;
-    const marker=occupants.length?`<circle cx="25" cy="-22" r="11" fill="#efcf89" stroke="#34251a" stroke-width="2"/><text class="hex-count" x="25" y="-18" fill="#33271a" stroke="none">${occupants.length}</text>`:"";
+    const marker=occupants.map((occupant,index)=>{
+      const number=publicState.players.indexOf(occupant)+1;
+      const offset=(index-(occupants.length-1)/2)*18;
+      return `<g data-map-player="${esc(occupant.playerId)}" class="map-pawn"><title>${esc(occupant.nickname)} · ${esc(tile.id)}</title><circle cx="${offset}" cy="-20" r="13" fill="${occupant.playerId===selectedPlayerId?'#ffe29a':'#244d48'}" stroke="#ffe29a" stroke-width="2"/><text class="hex-count" x="${offset}" y="-16">${number}</text></g>`;
+    }).join('');
     return `<g class="hex-cell${selected}" data-tile="${esc(tile.id)}" transform="translate(${x} ${y})"><polygon points="${hexPoints}" fill="${terrain.color}" stroke="#3f523d" stroke-width="1.2"/><polygon points="-37,0 -18.5,-32 18.5,-32 37,0 18.5,32 -18.5,32" fill="none" stroke="#ffeec0" stroke-opacity=".14"/><text class="hex-icon" y="5">${icon}</text>${marker}${tile.resource?'<circle cx="-24" cy="-20" r="5" fill="#f3d88b"/>':''}</g>`;
   }).join('');
   $('board').innerHTML=`<svg class="hex-map" viewBox="0 0 900 900" role="img" aria-label="127 格六角战棋地图"><defs><filter id="mapNoise"><feTurbulence type="fractalNoise" baseFrequency=".045" numOctaves="2" seed="6"/><feColorMatrix values="0 0 0 0 0.12 0 0 0 0 0.14 0 0 0 0 0.09 0 0 0 .17 0"/></filter></defs><rect width="900" height="900" fill="#244d48"/>${cells}<rect width="900" height="900" filter="url(#mapNoise)" pointer-events="none" opacity=".16"/></svg>`;
   $('board').querySelectorAll('[data-tile]').forEach(cell=>cell.onclick=()=>selectTile(cell.dataset.tile));
+  $('board').querySelectorAll('[data-map-player]').forEach(marker=>marker.onclick=event=>{event.stopPropagation();selectMapPlayer(marker.dataset.mapPlayer)});
+  $('mapPlayers').innerHTML=publicState.players.map((item,index)=>`<button class="map-player ${item.playerId===selectedPlayerId?'selected':''}" data-select-player="${esc(item.playerId)}"><span class="avatar">${roleImage(item.careerId)}</span><span><b>${index+1} · ${esc(item.nickname)}${item.playerId===meId?'（我）':''}</b><small>${item.eliminated?'已淘汰':`坐标 ${esc(item.position||'未出生')}`}${item.playerId===publicState.currentPlayerId?' · 当前回合':''}</small></span></button>`).join('');
+  $('mapPlayers').querySelectorAll('[data-select-player]').forEach(button=>button.onclick=()=>selectMapPlayer(button.dataset.selectPlayer));
+  const ownSelected=selectedPlayerId===meId;
+  const myTurn=publicState.phase==='playing'&&publicState.currentPlayerId===meId&&!player?.eliminated;
+  const adjacent=hexDistance(player?.position,selectedTileId)===1;
+  $('confirmMove').disabled=!(ownSelected&&myTurn&&adjacent&&player?.movePoints>0);
+  $('movementHint').textContent=!selectedPlayerId?'① 选择自己的角色 → ② 掷移动骰 → ③ 选择相邻格 → ④ 确认移动':!ownSelected?'正在查看其他角色；选择自己的角色后可移动':!myTurn?'等待你的回合':!(player?.movePoints>0)?'已选择自己的角色，请先掷移动骰':adjacent?`目标 ${selectedTileId} · 点击右侧按钮确认移动`:'请选择一个相邻地块作为移动目标';
+  updateMapView();
   const selected=tiles.find(tile=>tile.id===selectedTileId);
   const terrain=selected&&(TERRAIN[selected.type]||TERRAIN.plain);
   $('boardHint').textContent=selected?`${terrain.name} · ${selected.id}${selected.feature==="forge"?" · 铁匠铺":""}${selected.building?` · ${selected.building.name}（产出 ${selected.building.output}）`:''}${selected.resource?' · 有资源':''}。点击地图格可移动或选定目标。`:'点击相邻地块移动，或先掷移动骰；地图格之间已紧密拼接。';
 }
 function selectTile(tileId){
   selectedTileId=tileId;
-  if(targetMode==="move"&&state?.public?.phase==="playing"){
-    const me=state.public.players.find(player=>player.playerId===meId);
-    if(me?.movePoints!==null&&me?.movePoints!==undefined)send({type:"move",tileId});
-  }
   if(state?.public)renderMap(state.public,state.public.players.find(player=>player.playerId===meId));
 }
 function actionButton(text, action, extraClass=""){
@@ -87,6 +129,7 @@ function actionButton(text, action, extraClass=""){
 function renderGame(payload){
   $('auth').classList.add('hidden');$('lobby').classList.add('hidden');$('game').classList.remove('hidden');
   const publicState=payload.public;
+  document.querySelector('.board-hint').textContent='点击地块只选择目标，不会立即移动。地图上的编号对应上方角色栏。';
   const me=publicState.players.find(player=>player.playerId===meId);
   const playing=publicState.phase==="playing";
   const myTurn=playing&&publicState.currentPlayerId===meId;
