@@ -12,9 +12,6 @@
 .zoom-controls button{padding:6px 10px;box-shadow:none}
 .pan-hint{font-size:11px;color:#bca98a;margin-right:4px;white-space:nowrap}
 #zoomLabel{min-width:45px;text-align:center;font-size:12px}
-.movement-panel{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-top:10px;padding:10px;background:#1b302b;border:1px solid #697452;border-radius:10px}
-.movement-panel span{font-size:12px;line-height:1.6;color:#f2dab0}
-.movement-panel button{flex:none;padding:8px 12px;font-size:12px}
 .map-pawn{cursor:pointer}
 .map-pawn:hover{filter:brightness(1.18)}
 .map-pawn.selected{filter:drop-shadow(0 0 5px #ffe29a)}
@@ -25,8 +22,63 @@
 .claim-ring{pointer-events:none;stroke-dasharray:7 5}
 .claim-badge{pointer-events:none}
 .claim-badge text{font-size:10px;fill:#fdf3d8;stroke-width:0}
-.actionbar{padding-top:12px;border-top:1px solid #80684755;gap:7px}
-.actionbar button,.actionbar select{box-shadow:none}
+
+/* ===== 指令面板 =====
+   按钮统一高度/圆角/内边距，按“移动→抽牌→基础行动→目标参数→天赋”分组，
+   当前可操作的组高亮，破坏性操作单独分隔。 */
+.actionbar{padding:0;border:0;gap:0}
+.command-panel{display:block}
+.actionbar .cmd-groups{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:10px}
+.actionbar .cmd-group{margin:0;padding:9px 11px 11px;background:#1b2a26;border:1px solid #5d6f57;border-radius:12px;min-width:0}
+.actionbar .cmd-group.is-active{border-color:#b8a05c;background:#20302a;box-shadow:inset 0 0 0 1px #b8a05c33}
+.actionbar .cmd-group > h4{display:flex;align-items:center;gap:7px;margin:0 0 8px;font-size:11.5px;font-weight:600;color:#d8c69c;letter-spacing:.04em}
+.actionbar .cmd-step{display:inline-flex;align-items:center;justify-content:center;width:17px;height:17px;flex:none;border-radius:50%;background:#3d4d3f;color:#f0dfb4;font-size:10.5px}
+.actionbar .cmd-group.is-active .cmd-step{background:#b8a05c;color:#1b1512}
+.actionbar .cmd-state{margin-left:auto;font-weight:400;font-size:11px;color:#a8b79c;text-align:right;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:60%}
+.actionbar .cmd-row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.actionbar .cmd-fields{gap:8px 10px}
+.actionbar .cmd-field{display:flex;flex-direction:column;gap:3px;min-width:0}
+.actionbar .cmd-field > span{font-size:10.5px;color:#a8b79c;letter-spacing:.03em}
+.actionbar .cmd-field.cmd-narrow{width:74px}
+.actionbar .cmd-field select,.actionbar .cmd-field input{height:34px;padding:0 8px;border-radius:8px;border:1px solid #7d6a45;background:#16211f;color:#f6ecd4;font-size:12px;width:100%}
+/* 目标尺寸：一律 ≥36px 高，超过 WCAG 2.5.8 的 24px 下限；主要与破坏性操作做到 40px。 */
+.cmd-btn{min-height:36px;padding:0 14px;font-size:12.5px;line-height:1;border-radius:9px;border:1px solid #c79445;background:linear-gradient(#7b572b,#4e301b);color:#fff5d9;box-shadow:none;white-space:nowrap}
+.cmd-btn:hover:not(:disabled){filter:brightness(1.12)}
+.cmd-btn.cmd-primary{border-color:#e0b866;background:linear-gradient(#a2762f,#6b451c);font-weight:600}
+.cmd-btn.cmd-lg{min-height:40px;padding:0 22px;font-size:13.5px}
+.cmd-btn.cmd-ghost{border-color:#6d7d68;background:linear-gradient(#33564d,#223a35)}
+.cmd-btn.cmd-danger{min-height:40px;border-color:#c9715a;background:linear-gradient(#8e4632,#5a2a1e)}
+.cmd-btn:disabled{opacity:.45;cursor:not-allowed;filter:grayscale(.35)}
+/* 键盘用户必须看得见焦点，鼠标点击不显示外框。 */
+.cmd-btn:focus-visible,.actionbar .cmd-field select:focus-visible,.actionbar .cmd-field input:focus-visible,.cmd-locked > summary:focus-visible{outline:2px solid #ffe29a;outline-offset:2px}
+.actionbar .cmd-notice{margin-top:8px}
+.cmd-footer{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin-top:10px;padding-top:10px;border-top:1px solid #80684755}
+.cmd-status{flex:1;min-width:180px;font-size:12px;color:#f2dab0;line-height:1.5}
+.cmd-footer-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.cmd-divider{width:1px;height:26px;background:#80684766}
+.cmd-locked{margin-top:7px;font-size:11px;color:#a8b79c}
+.cmd-locked > summary{cursor:pointer;list-style:none;padding:2px 0}
+.cmd-locked > summary::-webkit-details-marker{display:none}
+.cmd-locked > summary::before{content:"▸ ";color:#8d9a86}
+.cmd-locked[open] > summary::before{content:"▾ "}
+.cmd-locked .cmd-row{margin-top:6px}
+.cmd-chip{display:inline-block;padding:4px 9px;border-radius:999px;border:1px dashed #6d7d68;color:#a8b79c;font-size:11px}
+
+/* 本回合待办：整行铺满，用符号与颜色区分「可做 / 进行中 / 已完成 / 不可用 / 等待」。 */
+.cmd-todo{grid-column:1/-1}
+.cmd-todo .cmd-row{gap:6px}
+.cmd-todo .cmd-chip{padding:5px 11px;font-size:11.5px;line-height:1.2;border-style:solid}
+button.cmd-chip{cursor:pointer;font:inherit}
+button.cmd-chip:hover{filter:brightness(1.2)}
+.cmd-todo-todo{border-color:#cfa95e;color:#f6e3ac;background:#3a2d18}
+.cmd-todo-doing{border-color:#63b8d6;color:#d6f0fa;background:#183039;}
+.cmd-todo-done{border-color:#5f8a5c;color:#bcd8b8;background:#1e2b1d}
+.cmd-todo-blocked{border-color:#5d6f57;color:#93a08d;background:#1b2320}
+.cmd-todo-wait{border-color:#6d7d68;color:#c3cdbb;background:#1d2523}
 .right{max-height:calc(100vh - 110px);overflow:auto}
 @media(max-width:1100px){.game{grid-template-columns:180px minmax(0,1fr)}.right{grid-column:1/-1;max-height:none}.hand{grid-template-columns:repeat(auto-fit,minmax(150px,1fr))}}
-@media(max-width:700px){.game{grid-template-columns:1fr}.right{grid-column:auto}.board{height:380px;min-height:0}.movement-panel{flex-wrap:wrap}.map-player{flex:1;min-width:130px}.side{display:block}.board-head{flex-wrap:wrap;gap:8px}}
+@media(max-width:700px){.game{grid-template-columns:1fr}.right{grid-column:auto}.board{height:380px;min-height:0}.map-player{flex:1;min-width:130px}.side{display:block}.board-head{flex-wrap:wrap;gap:8px}
+  .actionbar .cmd-groups{grid-template-columns:1fr}
+  .cmd-btn{height:40px;flex:1;min-width:112px}
+  .cmd-footer-actions{width:100%}
+  .cmd-status{min-width:0;width:100%}}

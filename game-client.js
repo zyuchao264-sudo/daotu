@@ -49,10 +49,182 @@ const mapToolbar=document.createElement('div');
 mapToolbar.className='map-toolbar';
 mapToolbar.innerHTML='<div id="mapPlayers" class="map-players"></div><div class="zoom-controls"><span class="pan-hint">按住右键拖动地图（左键/中键同样可拖动）</span><button id="zoomOut" aria-label="缩小地图">−</button><span id="zoomLabel">100%</span><button id="zoomIn" aria-label="放大地图">＋</button><button id="zoomReset">全图</button></div>';
 $('board').before(mapToolbar);
-const movementPanel=document.createElement('div');
-movementPanel.className='movement-panel';
-movementPanel.innerHTML='<span id="movementHint">先选择自己的角色</span><button id="confirmMove" disabled>移动到选中格</button>';
-$('board').after(movementPanel);
+// ===== 指令面板 =====
+// 常驻外壳：按钮与下拉只建一次，之后仅切换 hidden/disabled/文案。
+// 这样状态刷新不会重置已选的目标/资源/建筑，也不会打断键盘焦点。
+// 注意：commandButtons 必须先于 buildCommandPanel() 声明，否则会踩到暂时性死区。
+const commandButtons={};
+buildCommandPanel();
+function buildCommandPanel(){
+  $('actionbar').innerHTML=`<div class="cmd-groups">
+<section class="cmd-group cmd-todo" role="group" data-group="todo" id="groupTodo" aria-label="本回合待办">
+  <h4><span class="cmd-step" aria-hidden="true">✓</span>本回合待办<span class="cmd-state" id="todoState"></span></h4>
+  <div class="cmd-row" id="todoRow"></div>
+</section>
+<section class="cmd-group" role="group" data-group="move" id="groupMove" aria-label="移动">
+  <h4><span class="cmd-step" aria-hidden="true">1</span>移动<span class="cmd-state" id="movementHint">先选择自己的角色</span></h4>
+  <div class="cmd-row">
+    <button class="cmd-btn" data-action="rollMove">掷移动骰</button>
+    <button class="cmd-btn" data-action="rerollMove" hidden>重投</button>
+    <button class="cmd-btn cmd-primary" data-action="confirmMove" disabled>移动到选中格</button>
+    <button class="cmd-btn cmd-ghost" data-action="stopMove">结束移动</button>
+    <button class="cmd-btn cmd-ghost" data-action="extraMove">额外移动</button>
+  </div>
+</section>
+<section class="cmd-group" role="group" data-group="cards" id="groupCards" aria-label="抽牌与装备">
+  <h4><span class="cmd-step">2</span>抽牌与装备<span class="cmd-state" id="cardState"></span></h4>
+  <div class="cmd-row">
+    <button class="cmd-btn" data-action="draw">抽牌</button>
+    <button class="cmd-btn" data-action="drawExtra">抽两张 · 1肉</button>
+    <button class="cmd-btn" data-action="forge">铁匠铺抽装备</button>
+  </div>
+</section>
+<section class="cmd-group" role="group" data-group="act" id="groupAct" aria-label="基础行动">
+  <h4><span class="cmd-step">3</span>基础行动<span class="cmd-state" id="actionState"></span></h4>
+  <div class="cmd-row">
+    <button class="cmd-btn" data-action="build">建造选中格</button>
+    <button class="cmd-btn" data-action="harvest">收获选中格</button>
+    <button class="cmd-btn" data-action="raid">抢夺选中格</button>
+    <button class="cmd-btn" data-action="spring">泉水恢复</button>
+    <button class="cmd-btn" data-action="attack">攻击选中目标</button>
+  </div>
+</section>
+<section class="cmd-group" role="group" data-group="params" id="groupParams" aria-label="目标与参数">
+  <h4><span class="cmd-step">4</span>目标与参数<span class="cmd-state">供建造、收获、抢夺、出牌使用</span></h4>
+  <div class="cmd-row cmd-fields">
+    <label class="cmd-field"><span>目标玩家</span><select id="targetPlayer"></select></label>
+    <label class="cmd-field"><span>资源</span><select id="resourceChoice"><option value="wood">木</option><option value="stone">石</option><option value="meat">肉</option><option value="gold">金</option></select></label>
+    <label class="cmd-field cmd-narrow"><span>数量</span><input id="resourceAmount" type="number" min="1" max="10" value="1"></label>
+    <label class="cmd-field"><span>建筑</span><select id="buildingType"><option value="career">专属建筑</option><option value="lumber">伐木场</option><option value="quarry">采石场</option><option value="ranch">牧场</option><option value="mine">金矿场</option></select></label>
+  </div>
+</section>
+<section class="cmd-group" role="group" data-group="talents" id="groupTalents" aria-label="天赋升级">
+  <h4><span class="cmd-step">5</span>天赋升级<span class="cmd-state" id="talentState"></span></h4>
+  <div class="cmd-row">
+    <button class="cmd-btn" data-action="upgrade2a" hidden></button>
+    <button class="cmd-btn" data-action="upgrade2b" hidden></button>
+    <button class="cmd-btn" data-action="upgrade3a" hidden></button>
+    <button class="cmd-btn" data-action="upgrade3b" hidden></button>
+  </div>
+  <details class="cmd-locked" id="lockedTalents" hidden><summary id="lockedTalentsSummary"></summary><div class="cmd-row" id="lockedTalentRow"></div></details>
+</section>
+</div>
+<div class="cmd-footer">
+  <span class="cmd-status" id="turnStatus"></span>
+  <div class="cmd-footer-actions">
+    <button class="cmd-btn" data-action="trial">开始试炼</button>
+    <button class="cmd-btn cmd-primary cmd-lg" data-action="endTurn">结束回合</button>
+    <span class="cmd-divider" aria-hidden="true"></span>
+    <button class="cmd-btn cmd-danger" data-action="endGame" hidden>结束对局</button>
+  </div>
+</div>
+<div class="cmd-notice" id="cmdNoticeHost"></div>`;
+  for(const button of $('actionbar').querySelectorAll('[data-action]')){
+    commandButtons[button.dataset.action]=button;
+    button.onclick=()=>dispatchAction(button.dataset.action);
+  }
+  const noticeEl=$('gameNotice'),noticeHost=$('cmdNoticeHost');
+  if(noticeEl&&noticeHost){
+    // 屏幕阅读器需要知道提示区会变化
+    noticeEl.setAttribute('role','status');
+    noticeEl.setAttribute('aria-live','polite');
+    noticeHost.append(noticeEl);
+  }
+}
+function setCommand(action,state={}){
+  const button=commandButtons[action];
+  if(!button)return;
+  if(state.hidden!==undefined)button.hidden=state.hidden;
+  if(state.disabled!==undefined)button.disabled=state.disabled;
+  if(state.title!==undefined)button.title=state.title;
+  if(state.label!==undefined)button.textContent=state.label;
+  if(state.primary!==undefined)button.classList.toggle('cmd-primary',state.primary);
+}
+function setGroupVisible(group,visible){
+  const element=$('actionbar').querySelector(`[data-group="${group}"]`);
+  if(element)element.hidden=!visible;
+}
+function setGroupActive(group,active){
+  const element=$('actionbar').querySelector(`[data-group="${group}"]`);
+  if(element)element.classList.toggle('is-active',!!active);
+}
+function setText(id,text){const element=$(id);if(element)element.textContent=text||''}
+// 本回合待办：把“还能做什么 / 已经做完什么 / 为什么不能做”集中成一行提醒。
+// 直接可执行的待办做成按钮（走同一个 dispatchAction），需要选目标或选格的只做提示，
+// 避免给出点了会失败的入口。state: todo 可做 / doing 进行中 / done 已完成 / blocked 不可用 / wait 等待。
+function renderTurnTodo(items){
+  const row=$('todoRow');
+  if(!row)return;
+  const mark={todo:'○',doing:'◐',done:'✓',blocked:'✕',wait:'…'};
+  row.innerHTML=items.map(item=>item.action
+    ? `<button class="cmd-chip cmd-todo-${item.state}" data-todo="${esc(item.action)}" title="${esc(item.title||item.text)}">${mark[item.state]} ${esc(item.text)}</button>`
+    : `<span class="cmd-chip cmd-todo-${item.state}" title="${esc(item.title||item.text)}">${mark[item.state]} ${esc(item.text)}</span>`
+  ).join('');
+  row.querySelectorAll('[data-todo]').forEach(button=>button.onclick=()=>dispatchAction(button.dataset.todo));
+  const active=items.filter(item=>item.state==="todo"||item.state==="doing").length;
+  const waiting=items.some(item=>item.state==="wait");
+  // 只有一项时（等待/旁观/已结束）不必再报“还有几项”，避免自相矛盾。
+  setText('todoState',waiting||items.length<=1?'':active?`还有 ${active} 项可做`:'本回合已无待办');
+}
+// 天赋按钮：已学的、选过另一分支的、以及效果未接入的都不占按钮位；
+// 未接入的收进可展开的“未接入的天赋”，既不误导也不占地方。
+function renderTalentCommands(career,me,canAct){
+  if(!career||!me)return 0;
+  const support=me.talentSupport||{2:{},3:{}};
+  const pending=[];
+  let available=0;
+  for(const level of [2,3])for(const branch of ["a","b"]){
+    const action=`upgrade${level}${branch}`;
+    const name=career[`lv${level}${branch}Name`];
+    if(!name){setCommand(action,{hidden:true});continue;}
+    const cost=(level===2?career[`lv2${branch}Cost`]:career.lv3Cost)||"无";
+    const chosen=level===2?me.talent2:me.talent3;
+    const owned=chosen===branch;
+    const supported=support[level]?.[branch]!==false;
+    if(!supported){pending.push({level,name,cost});setCommand(action,{hidden:true});continue;}
+    if(owned||chosen){setCommand(action,{hidden:true});continue;}
+    const needLevel2=level===3&&!me.talent2;
+    const noAction=(me.actionsLeft??0)<1;
+    available++;
+    setCommand(action,{hidden:false,disabled:!canAct||needLevel2||noAction,
+      label:`${level===2?"二级":"三级"} ${name} · ${cost}`,
+      title:!canAct?'等待你的回合':needLevel2?'请先学习二级天赋':noAction?'行动次数不足':'消耗 1 次行动升级天赋'});
+  }
+  const details=$('lockedTalents'),summary=$('lockedTalentsSummary'),row=$('lockedTalentRow');
+  if(details&&summary&&row){
+    details.hidden=pending.length===0;
+    summary.textContent=`未接入的天赋（${pending.length}）`;
+    row.innerHTML=pending.map(item=>`<span class="cmd-chip" title="效果尚未接入，暂时无法升级">${item.level===2?"二级":"三级"} ${esc(item.name)} · ${esc(item.cost)}</span>`).join('');
+  }
+  // 返回可升级项数量，供本回合待办使用
+  return canAct?available:0;
+}
+// 指令面板底部的状态行：一眼看出现在能不能动、该做什么。
+function statusHint(publicState,me,playing){
+  if(!playing)return publicState.winner?.type==="manual"?"对局已由房主结束"
+    :publicState.winner?.nickname?`胜者：${publicState.winner.nickname}`:"对局结束，无胜者";
+  if(me?.eliminated)return "你已被淘汰，可以继续旁观";
+  if(publicState.currentPlayerId!==meId){
+    const current=publicState.players.find(player=>player.playerId===publicState.currentPlayerId);
+    return `等待 ${current?.nickname||"对手"} 行动…`;
+  }
+  const parts=[];
+  if(me?.movePoints>0)parts.push(`可移动 ${me.movePoints} 格`);
+  else if(!me?.moved)parts.push("可掷移动骰");
+  parts.push((me?.actionsLeft??0)>0?`剩余 ${me.actionsLeft} 次行动`:"行动次数已用完，可以结束回合");
+  return parts.join(" · ");
+}
+// 下拉选项会随玩家进出变化，重填时保留玩家已选的值。
+function refreshTargetOptions(publicState){
+  const select=$('targetPlayer');
+  if(!select)return;
+  const previous=select.value;
+  select.innerHTML=['<option value="">不指定</option>'].concat(
+    publicState.players.filter(player=>!player.eliminated)
+      .map(player=>`<option value="${esc(player.playerId)}">${esc(player.nickname)}${player.playerId===meId?"（自己）":""}</option>`)
+  ).join('');
+  select.value=previous;
+}
 // 让 viewBox 与棋盘实际宽高比一致：既避免留白，也让拖动时横纵换算一致。
 function boardAspect(){
   const rect=$('board').getBoundingClientRect();
@@ -279,16 +451,17 @@ function renderMap(publicState, player){
   const stepCost=selected?terrainCostFor(player,selected):Infinity;
   const adjacent=hexDistance(player?.position,selectedTileId)===1;
   const canStep=ownSelected&&myTurn&&adjacent&&(player?.movePoints??0)>=stepCost;
-  $('confirmMove').disabled=!canStep;
-  $('confirmMove').textContent=canStep?`移动到选中格（消耗 ${stepCost} 格）`:'移动到选中格';
   const left=player?.movePoints;
+  setCommand('confirmMove',{disabled:!canStep,label:canStep?`移动到选中格 · ${stepCost} 格`:'移动到选中格',
+    title:canStep?`进入 ${selected?.id||''} 消耗 ${stepCost} 格`:'先掷移动骰，再点一个高亮的相邻格'});
+  $('confirmMove').disabled=!canStep;
   $('movementHint').textContent=
-    !selectedPlayerId?'① 选择自己的角色 → ② 掷移动骰 → ③ 点击相邻格移动（点数＝格数）':
-    !ownSelected?'正在查看其他角色；选择自己的角色后才能移动':
-    !myTurn?'等待你的回合':
-    left==null?'已选择自己的角色，请先掷移动骰':
-    adjacent?`移动中 · 还剩 ${left} 格 · 进入 ${selected.id}（${terrain.name}）消耗 ${stepCost} 格`:
-    `移动中 · 还剩 ${left} 格 · 点击高亮的相邻格即可移动，或点「结束移动」`;
+    !selectedPlayerId?'先选择自己的角色':
+    !ownSelected?'正在查看其他角色':
+    !myTurn?'等待对方行动':
+    left==null?'请先掷移动骰':
+    adjacent?`还剩 ${left} 格 · 进入消耗 ${stepCost} 格`:
+    `还剩 ${left} 格 · 点高亮格移动`;
   updateMapView();
   const claimText=selected?.claim?` · 大金矿已被 ${esc(selected.claim.nickname||"")} 占领（剩余 ${selected.claim.roundsLeft} 回合）`:selected?.type==="goldMine"?" · 大金矿可占领，进入即占领并连续 3 回合每回合结束获得 2 金":"";
   const costText=selected&&myTurn?` · 进入消耗 ${terrainCostFor(player,selected)} 格`:'';
@@ -305,13 +478,10 @@ function onTileClick(tileId){
   const tile=publicState.tiles.find(item=>item.id===tileId);
   if(canWalk&&hexDistance(me.position,tileId)===1&&terrainCostFor(me,tile)<=(me.movePoints??0))send({type:'move',tileId});
 }
-function actionButton(text, action, extraClass=""){
-  return `<button data-action="${action}" class="${extraClass}">${text}</button>`;
-}
 function renderGame(payload){
   $('auth').classList.add('hidden');$('lobby').classList.add('hidden');$('game').classList.remove('hidden');
   const publicState=payload.public;
-  document.querySelector('.board-hint').textContent='移动阶段点击相邻格即可移动：掷出的点数就是可移动格数，困难地形（森林/丘陵/河流）进入时消耗 2 格。点击其他格只选择目标。';
+  document.querySelector('.board-hint').textContent='点相邻高亮格移动（骰点＝可移动格数，困难地形 2 格）；点其他格只选择目标。';
   const me=publicState.players.find(player=>player.playerId===meId);
   // 默认选中自己的角色，省掉“先点自己再操作”的一步。
   if(!selectedPlayerId&&me)selectedPlayerId=meId;
@@ -332,6 +502,11 @@ function renderGame(payload){
     if(!branch)return "未学习";
     return `${esc(career?.[`lv${level}${branch}Name`]||branch.toUpperCase())}（${branch.toUpperCase()}）`;
   };
+  const talentPlain=level=>{
+    const branch=level===2?me?.talent2:me?.talent3;
+    if(!branch)return "未学习";
+    return `${career?.[`lv${level}${branch}Name`]||branch.toUpperCase()}（${branch.toUpperCase()}）`;
+  };
   const goldMineText=me?.goldMine?.roundsLeft>0
     ? `占领中 · 剩余 ${me.goldMine.roundsLeft} 回合 · 已获得 ${me.goldMineCollected||0} 金`
     : `未占领${me?.goldMineCollected?` · 本局累计获得 ${me.goldMineCollected} 金`:''}`;
@@ -342,35 +517,122 @@ function renderGame(payload){
   }).join('')||'<div class="status">暂无手牌</div>';
   $('hand').querySelectorAll('[data-card]').forEach(button=>button.onclick=()=>send({type:"playCard",cardUid:button.dataset.card,targetPlayerId:$('targetPlayer')?.value||null,resourceChoice:$('resourceChoice')?.value,quantity:Number($('resourceAmount')?.value)||1}));
   $('hand').querySelectorAll('[data-discard]').forEach(button=>button.onclick=()=>send({type:"discard",cardUid:button.dataset.discard}));
-  const selected=publicState.tiles.find(tile=>tile.id===selectedTileId);
-  const buildingOptions=`<select id="buildingType"><option value="career">专属建筑</option><option value="lumber">伐木场</option><option value="quarry">采石场</option><option value="ranch">牧场</option><option value="mine">金矿场</option></select>`;
-  const targetOptions=`<select id="targetPlayer"><option value="">选择目标玩家</option>${publicState.players.filter(player=>!player.eliminated).map(player=>`<option value="${esc(player.playerId)}">${esc(player.nickname)}${player.playerId===meId?"（自己）":""}</option>`).join('')}</select>`;
-  const resourceOptions=`<select id="resourceChoice"><option value="wood">木</option><option value="stone">石</option><option value="meat">肉</option><option value="gold">金</option></select><input id="resourceAmount" type="number" min="1" max="10" value="1" title="置换数量" style="width:64px;background:#1b2523;color:#fff4d9;border:1px solid #b19059;border-radius:8px;padding:8px">`;
-  // 天赋按钮按角色实际天赋名、费用与实现状态生成；未接入的天赋按钮禁用并给出原因，避免白花资源。
-  const talentButtons=()=>{
-    if(!me)return '';
-    const support=me.talentSupport||{2:{},3:{}};
-    return [2,3].flatMap(level=>["a","b"].map(branch=>{
-      const name=career?.[`lv${level}${branch}Name`];
-      if(!name)return '';
-      const cost=(level===2?career[`lv2${branch}Cost`]:career.lv3Cost)||"无";
-      const owned=(level===2?me.talent2:me.talent3)===branch;
-      const supported=support[level]?.[branch]!==false;
-      const locked=owned||!supported;
-      const title=owned?"已学习":supported?"":'此天赋效果尚未接入，暂时无法升级';
-      return `<button data-action="upgrade${level}${branch}" data-locked="${locked?1:0}" title="${esc(title)}" class="${supported?"":"secondary"}">${level===2?"二级":"三级"} ${esc(name)} · ${esc(cost)}${supported?"":"（待接入）"}</button>`;
-    })).join('');
-  };
-  const rerollButton=me&&me.careerId==="gambler"&&(me.rerollLeft||0)>0&&me.movePoints!=null&&!me.moveSpent
-    ?actionButton(`重投移动骰 · 剩 ${me.rerollLeft} 次`,"rerollMove")
-    :'';
+  // ---- 指令面板：只切换显示与禁用，不重建控件，避免下拉选择被状态刷新重置 ----
+  refreshTargetOptions(publicState);
+  const canAct=playing&&myTurn&&!me?.eliminated;
+  const actions=me?.actionsLeft??0;
+  const stunned=!!me&&(me.stunnedUntilRound??0)>=publicState.round;
+  for(const group of ["todo","move","cards","act","params","talents"])setGroupVisible(group,playing);
+  for(const group of ["move","cards","act","talents"])setGroupActive(group,canAct);
+  setText('actionState',`剩余 ${actions} 次`);
+  setText('cardState',`牌库 ${payload.private.deckCount} · 装备 ${payload.private.equipmentDeckCount}`);
+  setText('talentState',`二级 ${talentPlain(2)} · 三级 ${talentPlain(3)}`);
+  // 先把各项的可用性算成具名条件，按钮与本回合待办共用同一份判断，避免两处逻辑走偏。
+  const rollBlocked=!canAct||!!me?.moved||me?.movePoints!=null;
+  const extraBlocked=!canAct||actions<1||me?.movePoints!=null;
+  const drawBlocked=!canAct||actions<1;
+  const buildBlocked=!canAct||actions<1||!!me?.buildsThisTurn;
+  const raidBlocked=!canAct||actions<1||!!me?.raidsThisTurn;
+  const harvestBlocked=!canAct||actions<1;
+
+  setCommand('rollMove',{disabled:rollBlocked,
+    title:!canAct?'等待你的回合':me?.moved?'本回合已经掷过移动骰':'掷出 1~3 点，点数就是本回合可移动格数'});
+  const gamblerReroll=me?.careerId==="gambler"&&(me?.rerollLeft||0)>0;
+  setCommand('rerollMove',{hidden:!gamblerReroll,
+    disabled:!canAct||me?.movePoints==null||!!me?.moveSpent,
+    label:`重投 · 剩 ${me?.rerollLeft||0} 次`,
+    title:me?.movePoints==null?'请先掷移动骰':me?.moveSpent?'已经移动过，不能重投':'好赌之人：重投当前掷出的移动骰'});
+  setCommand('stopMove',{disabled:!canAct||me?.movePoints==null,title:'放弃本回合剩余的移动格数'});
+  setCommand('extraMove',{disabled:extraBlocked,
+    title:actions<1?'行动次数不足':me?.movePoints!=null?'请先用完当前可移动的格数':'消耗 1 次行动，再掷一次移动骰'});
+
+  setCommand('draw',{disabled:drawBlocked,title:actions<1?'行动次数不足':'消耗 1 次行动，抽 1 张职业牌'});
+  setCommand('drawExtra',{disabled:drawBlocked||(me?.resources?.meat??0)<1,
+    title:(me?.resources?.meat??0)<1?'需要 1 肉':'消耗 1 次行动与 1 肉，抽 2 张职业牌'});
+  setCommand('forge',{disabled:drawBlocked,title:'只能在铁匠铺格子上抽取装备牌'});
+
   const forcedRaid=me?.careerId==="merchant"&&me.talent3==="b";
-  $('actionbar').innerHTML=playing?`${actionButton("掷移动骰","rollMove")}${rerollButton}${actionButton("结束移动","stopMove","secondary")}${actionButton("额外移动","extraMove")}${actionButton("抽牌","draw")}${actionButton("抽两张 · 1肉","drawExtra")}${actionButton("铁匠铺抽装备","forge")}${targetOptions}${resourceOptions}${buildingOptions}${actionButton("建造选中格","build")}${actionButton("收获选中格","harvest")}${actionButton(forcedRaid?"强制征税选中格 · 2铜币":"抢夺选中格","raid")}${actionButton("泉水恢复","spring")}${talentButtons()}${actionButton("开始试炼","trial")}${actionButton("结束回合","endTurn","secondary")}${publicState.hostId===meId?actionButton("结束对局","endGame","danger"):''}`:'';
-  $('actionbar').querySelectorAll('[data-action]').forEach(button=>{
-    button.disabled=button.dataset.locked==="1"||(!myTurn&&button.dataset.action!=="endGame");
-    button.onclick=()=>dispatchAction(button.dataset.action);
-  });
-  if(!playing)notice('gameNotice','本局已结束，地图和记录保留供查看。');
+  setCommand('build',{disabled:buildBlocked,
+    title:me?.buildsThisTurn?'每回合只能建造一次':actions<1?'行动次数不足':'在选中的格子上建造（消耗 1 次行动）'});
+  setCommand('harvest',{disabled:harvestBlocked,title:'收获两格内自己建筑的产出（消耗 1 次行动）'});
+  setCommand('raid',{disabled:raidBlocked,label:forcedRaid?"强制征税选中格":"抢夺选中格",
+    title:me?.raidsThisTurn?'每回合只能抢夺一次':forcedRaid?'消耗 1 次行动与 2 铜币，对 3 格内的敌方建筑强制抢夺':'对同格的敌方建筑抢夺（消耗 1 次行动）'});
+  setCommand('spring',{disabled:harvestBlocked,title:'只能在泉水格子上回复生命'});
+  // 攻击也走同一个“目标玩家”下拉，避免操作入口散落在两处
+  const targetPlayer=publicState.players.find(player=>player.playerId===$('targetPlayer')?.value&&!player.eliminated);
+  const targetInRange=!!targetPlayer&&hexDistance(targetPlayer.position,me?.position)<=attackRange;
+  const payForHit=me?.careerId==="merchant"&&me.talent2==="b";
+  const shortCoins=payForHit&&(me?.resources?.special??0)<2;
+  const attackBlocked=!canAct||actions<1||!targetInRange||shortCoins;
+  setCommand('attack',{disabled:attackBlocked,
+    label:payForHit?"拿钱砸人 · 2铜币":"攻击选中目标",
+    title:!targetPlayer?'请先在「目标玩家」中选择目标':!targetInRange?`目标不在 ${attackRange} 格攻击范围内`:actions<1?'行动次数不足':shortCoins?'拿钱砸人需要 2 铜币':'对选中目标发动基础攻击（消耗 1 次行动）'});
+
+  const talentOpen=renderTalentCommands(career,me,canAct);
+
+  const trialBlocked=!canAct||actions<1;
+  setCommand('trial',{disabled:trialBlocked,title:'需要 30 分并站在地图中心的生存试炼板块'});
+  setCommand('endTurn',{disabled:!canAct,title:canAct?'结束本回合，交给下一位玩家':'等待你的回合'});
+  setCommand('endGame',{hidden:publicState.hostId!==meId,disabled:!playing,title:'房主手动结束本局（需二次确认）'});
+  setText('turnStatus',statusHint(publicState,me,playing));
+  renderTurnTodo(turnTodoItems({publicState,me,playing,canAct,actions,stunned,extraBlocked,drawBlocked,
+    buildBlocked,raidBlocked,harvestBlocked,attackBlocked,targetPlayer,trialBlocked,talentOpen,attackRange,
+    playableCards:(payload.private.hand||[]).filter(card=>SUPPORTED_CARDS.has(card.name)).length,
+    totalCards:(payload.private.hand||[]).length}));
+  if(!playing)notice('gameNotice','本局已结束，地图与记录保留供查看。');
+}
+// 组成本回合待办清单：按回合流程排序，只保留“该做/可做/已完成”的核心项。
+function turnTodoItems(ctx){
+  const {publicState,me,playing,canAct,actions,stunned,extraBlocked,drawBlocked,
+    buildBlocked,raidBlocked,harvestBlocked,attackBlocked,targetPlayer,trialBlocked,talentOpen,
+    playableCards,totalCards,attackRange}=ctx;
+  if(!playing)return [{state:'done',text:publicState.winner?.type==="manual"?"对局已由房主结束":publicState.winner?.nickname?`胜者：${publicState.winner.nickname}`:"对局结束"}];
+  if(me?.eliminated)return [{state:'blocked',text:'你已被淘汰，只能旁观',title:'本局已无法操作'}];
+  if(!canAct){
+    const current=publicState.players.find(player=>player.playerId===publicState.currentPlayerId);
+    return [{state:'wait',text:`等待 ${current?.nickname||'对手'} 行动`,title:'轮到你时这里会列出可做的操作'}];
+  }
+  const tiles=publicState.tiles||[];
+  const ownBuildingNearby=tiles.some(tile=>tile.building?.ownerId===me.playerId&&hexDistance(tile.id,me.position)<=2);
+  const items=[];
+  if(stunned)items.push({state:'blocked',text:'河神停滞中',title:'本回合无法操作，停滞持续到你的下回合结束'});
+  // 移动阶段
+  if(me?.moved){
+    items.push((me?.movePoints??0)>0
+      ? {state:'doing',text:`还可移动 ${me.movePoints} 格`,title:'点地图上的高亮格继续移动'}
+      : {state:'done',text:'移动已完成'});
+  }else{
+    items.push({state:'todo',text:'掷移动骰',action:'rollMove',title:'掷出 1~3 点，点数就是本回合可移动格数'});
+  }
+  if((me?.movePoints??0)>0)items.push({state:'done',text:'结束移动',action:'stopMove',title:'放弃剩余移动格数'});
+  // 行动阶段
+  items.push(actions>0
+    ? {state:'doing',text:`基础行动还剩 ${actions} 次`,title:'建造 / 抽牌 / 收获 / 抢夺 / 攻击 / 出牌 / 额外移动 / 天赋升级'}
+    : {state:'done',text:'基础行动已用完'});
+  if(!extraBlocked)items.push({state:'todo',text:'额外移动',action:'extraMove',title:'消耗 1 次行动，再掷一次移动骰'});
+  if(!drawBlocked)items.push({state:'todo',text:'抽牌',action:'draw',title:'消耗 1 次行动抽 1 张职业牌'});
+  // 需要选格或选目标的操作只做提示，不给出点了会失败的入口
+  items.push(me?.buildsThisTurn?{state:'done',text:'已建造'}
+    :buildBlocked?{state:'blocked',text:'建造不可用',title:'行动次数不足'}
+    :{state:'todo',text:'可建造',title:'选中你所在的格子，再点③的「建造选中格」'});
+  items.push(me?.raidsThisTurn?{state:'done',text:'已抢夺'}
+    :raidBlocked?{state:'blocked',text:'抢夺不可用',title:'行动次数不足'}
+    :{state:'todo',text:'可抢夺',title:'需与敌方建筑同格：选中该格后点③的「抢夺选中格」'});
+  items.push(!harvestBlocked&&ownBuildingNearby
+    ? {state:'todo',text:'可收获',title:'点选两格内自己的建筑，再按③的「收获选中格」'}
+    : {state:'blocked',text:'收获不可用',title:'两格内没有自己的建筑，或行动次数不足'});
+  items.push(!attackBlocked
+    ? {state:'todo',text:`可攻击 ${targetPlayer.nickname}`,title:'点③的「攻击选中目标」'}
+    : {state:'blocked',text:'攻击不可用',title:!targetPlayer?'先在④「目标玩家」里选一个目标':`目标不在 ${attackRange} 格攻击范围内`});
+  // 出牌
+  items.push(totalCards===0?{state:'blocked',text:'无手牌',title:'可以先用抽牌补充'}
+    :playableCards>0?{state:'todo',text:`可出牌 ${playableCards} 张`,title:'点右侧手牌即可打出'}
+    :{state:'blocked',text:'手牌效果均未接入',title:'这些牌暂时无法打出，可以先用抽牌补充'});
+  // 天赋与试炼
+  if(talentOpen>0)items.push({state:'todo',text:`可升级天赋 ${talentOpen} 项`,title:'在⑤天赋升级里选择'});
+  if(!trialBlocked&&me?.score>=30&&me?.position==="0:0")items.push({state:'todo',text:'可开启生存试炼',action:'trial',title:'通过即可直接获胜'});
+  items.push({state:'todo',text:'结束回合',action:'endTurn',title:'交给下一位玩家'});
+  return items;
 }
 function dispatchAction(kind){
   const tileId=selectedTileId;
@@ -378,8 +640,9 @@ function dispatchAction(kind){
   if(kind.startsWith("upgrade"))return send({type:"upgrade",level:Number(kind.slice(-2,-1)),branch:kind.slice(-1)});
   if(kind==="build")return send({type:"build",tileId,buildingType:$('buildingType').value});
   if(["harvest","raid"].includes(kind))return send({type:kind,tileId});
+  if(kind==="attack")return send({type:"attack",targetPlayerId:$('targetPlayer')?.value||null,resourceChoice:$('resourceChoice')?.value});
   if(kind==="trial")return trialDialog.showModal();
-  if(kind==="endGame"&&!confirm("确定手动结束这场对局吗？"))return;
+  if(kind==="endGame"&&!confirm("确定手动结束这场对局吗？当前对局进度将不再继续。"))return;
   send({type:kind});
 }
 const boardHint=document.createElement("div");boardHint.id="boardHint";boardHint.className="tile-tooltip";

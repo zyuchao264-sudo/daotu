@@ -163,9 +163,14 @@ async function main(){
       assert.ok(player.talentSupport&&player.talentSupport[2]&&player.talentSupport[3],'应下发天赋实现状态');
       assert.equal(typeof player.talentSupport[2].a,'boolean','天赋状态应为布尔值');
       assert.equal(typeof player.attackRange,'number');
+      // 本回合待办需要的回合内状态
+      assert.equal(player.buildsThisTurn,false,'开局应未建造');
+      assert.equal(player.raidsThisTurn,false,'开局应未抢夺');
+      assert.equal(player.moved,false,'开局应未移动');
+      assert.equal(player.movePoints,null,'开局应未掷移动骰');
     }
     assert.equal(state.public.tiles.filter(tile=>tile.type==='goldMine').length,1,'地图上应恰好有一个大金矿');
-    console.log('✓ 大金矿与天赋状态已下发');
+    console.log('✓ 大金矿、天赋与本回合待办所需状态已下发');
 
     const rolled = await clients[0].emit('gameAction',{roomCode,playerId:created.playerId,action:{type:'rollMove'}});
     assert.equal(rolled.ok,true,rolled.error);
