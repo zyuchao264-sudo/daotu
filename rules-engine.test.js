@@ -343,6 +343,67 @@ test('其他职业不能重投移动骰',()=>{
   assert.match(result.error,/赌徒/);
 });
 
+// 找一条足够长的纯平原路径，用来验证“骰子点数＝可移动格数”而不受地形消耗干扰。
+function plainPath(room,start,length){
+  const path=[start];
+  let current=start;
+  while(path.length<=length){
+    const next=room.tiles.find(tile=>tile.type==='plain'&&engine.distance(tile,current)===1&&!path.includes(tile));
+    if(!next)return null;
+    path.push(next);current=next;
+  }
+  return path;
+}
+
+test('骰子点数就是可移动格数：掷 3 点在平原上能连续走 3 格',()=>{
+  const {room,player}=roomWithPlayer();
+  const path=plainPath(room,room.tiles.find(tile=>tile.id==='0:0'),3);
+  assert.ok(path,'应能在地图上找到 3 格长的平原路径');
+  player.position=path[0].id;
+  const original=Math.random;
+  Math.random=()=>0.999; // 1 + floor(0.999*3) === 3
+  try{
+    assert.equal(engine.act(room,player,{type:'rollMove'},[]).ok,true);
+    assert.equal(player.movePoints,3,'掷 3 点应得到 3 格');
+    for(let step=1;step<=3;step++){
+      assert.equal(engine.act(room,player,{type:'move',tileId:path[step].id},[]).ok,true,`第 ${step} 格应能移动`);
+      assert.equal(player.position,path[step].id);
+    }
+    assert.equal(player.movePoints,null,'走满 3 格后应没有剩余格数');
+    assert.equal(engine.act(room,player,{type:'move',tileId:path[1].id},[]).ok,false,'格数用完后不能再移动');
+  }finally{Math.random=original}
+});
+
+test('困难地形要多吃 1 格：掷 2 点只能走进 1 格森林',()=>{
+  const {room,player}=roomWithPlayer();
+  const forest=room.tiles.find(tile=>tile.type==='forest');
+  const approach=room.tiles.find(tile=>engine.distance(tile,forest)===1);
+  player.position=approach.id;
+  const original=Math.random;
+  Math.random=()=>0.5; // 1 + floor(0.5*3) === 2
+  try{
+    assert.equal(engine.act(room,player,{type:'rollMove'},[]).ok,true);
+    assert.equal(player.movePoints,2);
+    assert.equal(engine.act(room,player,{type:'move',tileId:forest.id},[]).ok,true,'掷 2 点足以进入森林');
+    assert.equal(player.movePoints,null,'进入森林消耗 2 格，掷 2 点后只剩 0 格');
+  }finally{Math.random=original}
+});
+
+test('格数不足时给出明确的格数提示',()=>{
+  const {room,player}=roomWithPlayer();
+  const forest=room.tiles.find(tile=>tile.type==='forest');
+  const approach=room.tiles.find(tile=>engine.distance(tile,forest)===1);
+  player.position=approach.id;
+  const original=Math.random;
+  Math.random=()=>0.0001; // 1 + floor(0.0001*3) === 1
+  try{
+    assert.equal(engine.act(room,player,{type:'rollMove'},[]).ok,true);
+    const result=engine.act(room,player,{type:'move',tileId:forest.id},[]);
+    assert.equal(result.ok,false);
+    assert.match(result.error,/需要 2 格，当前还剩 1 格/);
+  }finally{Math.random=original}
+});
+
 test('赌徒可以重投额外移动掷出的骰子',()=>{
   const {room,player}=roomWithPlayer();
   player.careerId='gambler';

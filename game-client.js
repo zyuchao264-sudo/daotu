@@ -10,19 +10,27 @@ const ROLE_IMAGES = {
   career_1787382232648:"/assets/avatars/trickster.png"
 };
 const TERRAIN = {
-  plain:{name:"平原",icon:"✦",color:"#9ba75c"},
-  forest:{name:"森林",icon:"♠",color:"#456e45"},
-  hill:{name:"丘陵",icon:"▲",color:"#998452"},
-  river:{name:"河流",icon:"≈",color:"#4c88a0"},
-  riverGod:{name:"河神",icon:"♜",color:"#426c91"},
-  desert:{name:"沙漠",icon:"☀",color:"#ba9858"},
-  spring:{name:"泉水",icon:"✧",color:"#5aa8a1"},
-  holySpring:{name:"圣泉",icon:"✴",color:"#91cbc0"},
-  void:{name:"虚空",icon:"◆",color:"#68588b"},
-  fire:{name:"地火",icon:"♨",color:"#a24e35"},
-  goldMine:{name:"金矿",icon:"❖",color:"#ae9042"},
-  trial:{name:"生存试炼",icon:"★",color:"#ae793d"}
+  plain:{name:"平原",icon:"✦",color:"#9ba75c",cost:1},
+  forest:{name:"森林",icon:"♠",color:"#456e45",cost:2},
+  hill:{name:"丘陵",icon:"▲",color:"#998452",cost:2},
+  river:{name:"河流",icon:"≈",color:"#4c88a0",cost:2},
+  riverGod:{name:"河神",icon:"♜",color:"#426c91",cost:2},
+  desert:{name:"沙漠",icon:"☀",color:"#ba9858",cost:1},
+  spring:{name:"泉水",icon:"✧",color:"#5aa8a1",cost:1},
+  holySpring:{name:"圣泉",icon:"✴",color:"#91cbc0",cost:1},
+  void:{name:"虚空",icon:"◆",color:"#68588b",cost:1},
+  fire:{name:"地火",icon:"♨",color:"#a24e35",cost:1},
+  goldMine:{name:"金矿",icon:"❖",color:"#ae9042",cost:1},
+  trial:{name:"生存试炼",icon:"★",color:"#ae793d",cost:1}
 };
+// 与 rules-engine.js 的地形消耗保持一致：骰子点数＝可移动格数，进入困难地形要多吃 1 格。
+function terrainCostFor(player,tile){
+  if(!tile)return Infinity;
+  if(player?.ignoreTerrainCost)return 1;
+  const base=(TERRAIN[tile.type]||TERRAIN.plain).cost||1;
+  const discount=(player?.careerId==="hunter"&&player.talent2==="a"?1:0)+(player?.equipment?.some(card=>card.name==="马车")?1:0);
+  return Math.max(1,base-discount);
+}
 const SUPPORTED_CARDS = new Set(["止血绷带","舔舐伤口","狩猎","整备","前进","召唤猎狗","隐秘行踪","战术瞄准","猎狗进化","金盆洗手","黑金","黑市交易","投资军火","瞄准射击","放暗箭","轻便草鞋","草药","轻皮衣","黑大衣","马车","钱是万能的","换取筹码","哪有赌徒天天输","贷款","好运or厄运","逃跑是门技术","撒钱","止痛药","打吊水","假意示弱","空头支票"]);
 let selectedTileId = null;
 let selectedPlayerId = null;
@@ -219,12 +227,20 @@ function renderMap(publicState, player){
   const hexPoints="-41,0 -20.5,-35.5 20.5,-35.5 41,0 20.5,35.5 -20.5,35.5";
   const innerPoints="-37,0 -18.5,-32 18.5,-32 37,0 18.5,32 -18.5,32";
   const clipDefs=[];
+  // 移动阶段把“用当前格数走得到的相邻格”标出来，让骰子点数与可走格数一目了然。
+  const myTurnNow=publicState.phase==='playing'&&publicState.currentPlayerId===meId&&!player?.eliminated;
+  const moving=myTurnNow&&selectedPlayerId===meId&&(player?.movePoints??0)>0;
+  const reachable=new Set();
+  if(moving)for(const tile of tiles){
+    if(hexDistance(player.position,tile.id)===1&&terrainCostFor(player,tile)<=player.movePoints)reachable.add(tile.id);
+  }
   const cells=tiles.map(tile=>{
     const {x,y}=hexCenter(tile);
     const terrain=TERRAIN[tile.type]||TERRAIN.plain;
     const occupants=publicState.players.filter(item=>item.position===tile.id&&!item.eliminated);
     const building=tile.building;
     const selected=selectedTileId===tile.id?" selected":"";
+    const canStep=reachable.has(tile.id);
     const icon=building?"⌂":tile.feature==="forge"?"⚒":terrain.icon;
     // 有人站上去时，地形图标缩小移到左上角，把格子中央让给棋子，同时保留地形辨识。
     const iconMarkup=occupants.length
@@ -249,27 +265,45 @@ function renderMap(publicState, player){
     const claim=tile.claim;
     const claimColor=claim?playerColor(publicState,claim.playerId):"";
     const claimMarkup=claim?`<polygon class="claim-ring" points="${innerPoints}" fill="none" stroke="${claimColor}" stroke-width="3" stroke-opacity=".92"><title>大金矿占领：${esc(claim.nickname||"")}，剩余 ${claim.roundsLeft} 回合</title></polygon><g class="claim-badge"><rect x="-21" y="-35" width="42" height="17" rx="8.5" fill="#141a19" stroke="${claimColor}" stroke-width="1.8"/><circle cx="-11" cy="-26.5" r="5.4" fill="${claimColor}"/><text class="hex-count pawn-number" x="-11" y="-23.9">${publicState.players.findIndex(item=>item.playerId===claim.playerId)+1}</text><text class="hex-count" x="7" y="-22.4">⛏${claim.roundsLeft}</text></g>`:'';
-    return `<g class="hex-cell${selected}" data-tile="${esc(tile.id)}" transform="translate(${x} ${y})"><polygon points="${hexPoints}" fill="${terrain.color}" stroke="#3f523d" stroke-width="1.2"/><polygon points="${innerPoints}" fill="none" stroke="#ffeec0" stroke-opacity=".14"/>${iconMarkup}${claimMarkup}${pawns}${tile.resource?'<circle cx="-24" cy="-20" r="5" fill="#f3d88b"/>':''}</g>`;
+    return `<g class="hex-cell${selected}${canStep?" reachable":""}" data-tile="${esc(tile.id)}" transform="translate(${x} ${y})"><polygon points="${hexPoints}" fill="${terrain.color}" stroke="#3f523d" stroke-width="1.2"/><polygon points="${innerPoints}" fill="none" stroke="#ffeec0" stroke-opacity=".14"/>${canStep?`<polygon points="${innerPoints}" fill="none" stroke="#ffe29a" stroke-width="2.4" stroke-dasharray="6 4" stroke-opacity=".9"/>`:''}${iconMarkup}${claimMarkup}${pawns}${tile.resource?'<circle cx="-24" cy="-20" r="5" fill="#f3d88b"/>':''}</g>`;
   }).join('');
   $('board').innerHTML=`<svg class="hex-map" viewBox="0 0 900 900" role="img" aria-label="127 格六角战棋地图"><defs><filter id="mapNoise"><feTurbulence type="fractalNoise" baseFrequency=".045" numOctaves="2" seed="6"/><feColorMatrix values="0 0 0 0 0.12 0 0 0 0 0.14 0 0 0 0 0.09 0 0 0 .17 0"/></filter>${clipDefs.join('')}</defs><rect width="900" height="900" fill="#244d48"/>${cells}<rect width="900" height="900" filter="url(#mapNoise)" pointer-events="none" opacity=".16"/></svg>`;
-  $('board').querySelectorAll('[data-tile]').forEach(cell=>cell.onclick=()=>selectTile(cell.dataset.tile));
+  $('board').querySelectorAll('[data-tile]').forEach(cell=>cell.onclick=()=>onTileClick(cell.dataset.tile));
   $('board').querySelectorAll('[data-map-player]').forEach(marker=>marker.onclick=event=>{event.stopPropagation();selectMapPlayer(marker.dataset.mapPlayer)});
   $('mapPlayers').innerHTML=publicState.players.map((item,index)=>`<button class="map-player ${item.playerId===selectedPlayerId?'selected':''}" style="border-left:4px solid ${playerColor(publicState,item.playerId)}" data-select-player="${esc(item.playerId)}"><span class="avatar">${roleImage(item.careerId)}</span><span><b>${index+1} · ${esc(item.nickname)}${item.playerId===meId?'（我）':''}</b><small>${item.eliminated?'已淘汰':`坐标 ${esc(item.position||'未出生')}`}${item.playerId===publicState.currentPlayerId?' · 当前回合':''}${item.goldMine?.roundsLeft>0?` · 大金矿剩 ${item.goldMine.roundsLeft} 回合`:''}</small></span></button>`).join('');
   $('mapPlayers').querySelectorAll('[data-select-player]').forEach(button=>button.onclick=()=>selectMapPlayer(button.dataset.selectPlayer));
   const ownSelected=selectedPlayerId===meId;
   const myTurn=publicState.phase==='playing'&&publicState.currentPlayerId===meId&&!player?.eliminated;
-  const adjacent=hexDistance(player?.position,selectedTileId)===1;
-  $('confirmMove').disabled=!(ownSelected&&myTurn&&adjacent&&player?.movePoints>0);
-  $('movementHint').textContent=!selectedPlayerId?'① 选择自己的角色 → ② 掷移动骰 → ③ 选择相邻格 → ④ 确认移动':!ownSelected?'正在查看其他角色；选择自己的角色后可移动':!myTurn?'等待你的回合':!(player?.movePoints>0)?'已选择自己的角色，请先掷移动骰':adjacent?`目标 ${selectedTileId} · 点击右侧按钮确认移动`:'请选择一个相邻地块作为移动目标';
-  updateMapView();
   const selected=tiles.find(tile=>tile.id===selectedTileId);
   const terrain=selected&&(TERRAIN[selected.type]||TERRAIN.plain);
+  const stepCost=selected?terrainCostFor(player,selected):Infinity;
+  const adjacent=hexDistance(player?.position,selectedTileId)===1;
+  const canStep=ownSelected&&myTurn&&adjacent&&(player?.movePoints??0)>=stepCost;
+  $('confirmMove').disabled=!canStep;
+  $('confirmMove').textContent=canStep?`移动到选中格（消耗 ${stepCost} 格）`:'移动到选中格';
+  const left=player?.movePoints;
+  $('movementHint').textContent=
+    !selectedPlayerId?'① 选择自己的角色 → ② 掷移动骰 → ③ 点击相邻格移动（点数＝格数）':
+    !ownSelected?'正在查看其他角色；选择自己的角色后才能移动':
+    !myTurn?'等待你的回合':
+    left==null?'已选择自己的角色，请先掷移动骰':
+    adjacent?`移动中 · 还剩 ${left} 格 · 进入 ${selected.id}（${terrain.name}）消耗 ${stepCost} 格`:
+    `移动中 · 还剩 ${left} 格 · 点击高亮的相邻格即可移动，或点「结束移动」`;
+  updateMapView();
   const claimText=selected?.claim?` · 大金矿已被 ${esc(selected.claim.nickname||"")} 占领（剩余 ${selected.claim.roundsLeft} 回合）`:selected?.type==="goldMine"?" · 大金矿可占领，进入即占领并连续 3 回合每回合结束获得 2 金":"";
-  $('boardHint').textContent=selected?`${terrain.name} · ${selected.id}${selected.feature==="forge"?" · 铁匠铺":""}${selected.building?` · ${selected.building.name}（产出 ${selected.building.output}）`:''}${selected.resource?' · 有资源':''}${claimText}。点击地图格可移动或选定目标。`:'点击相邻地块移动，或先掷移动骰；地图格之间已紧密拼接；按住右键可拖动地图。';
+  const costText=selected&&myTurn?` · 进入消耗 ${terrainCostFor(player,selected)} 格`:'';
+  $('boardHint').textContent=selected?`${terrain.name} · ${selected.id}${costText}${selected.feature==="forge"?" · 铁匠铺":""}${selected.building?` · ${selected.building.name}（产出 ${selected.building.output}）`:''}${selected.resource?' · 有资源':''}${claimText}。`:'点击相邻地块移动，或先掷移动骰；地图格之间已紧密拼接；按住右键可拖动地图。';
 }
-function selectTile(tileId){
+// 点击地块：始终更新选中状态；移动阶段点到走得通的相邻格就直接走，不必每格再点一次确认。
+function onTileClick(tileId){
+  const publicState=state?.public;
+  if(!publicState)return;
+  const me=publicState.players.find(player=>player.playerId===meId);
   selectedTileId=tileId;
-  if(state?.public)renderMap(state.public,state.public.players.find(player=>player.playerId===meId));
+  renderMap(publicState,me);
+  const canWalk=publicState.phase==='playing'&&publicState.currentPlayerId===meId&&!me?.eliminated&&selectedPlayerId===meId&&(me?.movePoints??0)>0;
+  const tile=publicState.tiles.find(item=>item.id===tileId);
+  if(canWalk&&hexDistance(me.position,tileId)===1&&terrainCostFor(me,tile)<=(me.movePoints??0))send({type:'move',tileId});
 }
 function actionButton(text, action, extraClass=""){
   return `<button data-action="${action}" class="${extraClass}">${text}</button>`;
@@ -277,8 +311,10 @@ function actionButton(text, action, extraClass=""){
 function renderGame(payload){
   $('auth').classList.add('hidden');$('lobby').classList.add('hidden');$('game').classList.remove('hidden');
   const publicState=payload.public;
-  document.querySelector('.board-hint').textContent='点击地块只选择目标，不会立即移动。地图上的编号对应上方角色栏。';
+  document.querySelector('.board-hint').textContent='移动阶段点击相邻格即可移动：掷出的点数就是可移动格数，困难地形（森林/丘陵/河流）进入时消耗 2 格。点击其他格只选择目标。';
   const me=publicState.players.find(player=>player.playerId===meId);
+  // 默认选中自己的角色，省掉“先点自己再操作”的一步。
+  if(!selectedPlayerId&&me)selectedPlayerId=meId;
   const playing=publicState.phase==="playing";
   const myTurn=playing&&publicState.currentPlayerId===meId;
   $('roomBadge').textContent=`房间 ${publicState.roomCode} · ${publicState.maxPlayers||5} 人`;
@@ -299,7 +335,7 @@ function renderGame(payload){
   const goldMineText=me?.goldMine?.roundsLeft>0
     ? `占领中 · 剩余 ${me.goldMine.roundsLeft} 回合 · 已获得 ${me.goldMineCollected||0} 金`
     : `未占领${me?.goldMineCollected?` · 本局累计获得 ${me.goldMineCollected} 金`:''}`;
-  $('me').innerHTML=me?`<div class="player"><div class="avatar">${roleImage(me.careerId)}</div><div><b>${esc(me.nickname)}</b><div class="status">${esc(career?.name||'')} · 攻击范围 ${attackRange}</div></div></div><div class="resource-row">${Object.entries(me.resources||{}).map(([key,value])=>`<span class="resource">${resourceLabels[key]||key} <b>${value}</b></span>`).join('')}</div><div class="status">❤ ${me.hp}/${me.maxHp}　★ ${me.score}　行动 ${me.actionsLeft}　移动点 ${me.movePoints??"待掷骰"}</div><div class="status">行动牌库 ${payload.private.deckCount} · 装备牌库 ${payload.private.equipmentDeckCount} · 奥秘 ${me.secretCount}</div><div class="status">已装备：${me.equipment?.length?me.equipment.map(card=>esc(card.name)).join('、'):'无'}${me.dog?'、猎狗':''}</div><div class="status">大金矿：${goldMineText}</div><div class="status">天赋：二级 ${talentText(2)}　三级 ${talentText(3)}</div>${career?.passive0?`<div class="status">被动：${esc(career.passive0)}</div>`:''}`:'';
+  $('me').innerHTML=me?`<div class="player"><div class="avatar">${roleImage(me.careerId)}</div><div><b>${esc(me.nickname)}</b><div class="status">${esc(career?.name||'')} · 攻击范围 ${attackRange}</div></div></div><div class="resource-row">${Object.entries(me.resources||{}).map(([key,value])=>`<span class="resource">${resourceLabels[key]||key} <b>${value}</b></span>`).join('')}</div><div class="status">❤ ${me.hp}/${me.maxHp}　★ ${me.score}　行动 ${me.actionsLeft}　${me.movePoints!=null?`可移动 <b>${me.movePoints}</b> 格`:"待掷移动骰"}</div><div class="status">行动牌库 ${payload.private.deckCount} · 装备牌库 ${payload.private.equipmentDeckCount} · 奥秘 ${me.secretCount}</div><div class="status">已装备：${me.equipment?.length?me.equipment.map(card=>esc(card.name)).join('、'):'无'}${me.dog?'、猎狗':''}</div><div class="status">大金矿：${goldMineText}</div><div class="status">天赋：二级 ${talentText(2)}　三级 ${talentText(3)}</div>${career?.passive0?`<div class="status">被动：${esc(career.passive0)}</div>`:''}`:'';
   $('hand').innerHTML=(payload.private.hand||[]).map(card=>{
     const supported=SUPPORTED_CARDS.has(card.name);
     return `<div><button class="card ${supported?'':'unsupported'}" data-card="${esc(card.uid)}" ${supported&&myTurn?'':'disabled'}><strong>${esc(card.name)}</strong><small>${esc(card.type)} · ${esc(card.cost)}</small><p>${esc(card.effect)}</p>${supported?'':'<small>效果待接入</small>'}</button>${myTurn?`<button class="secondary" data-discard="${esc(card.uid)}" style="margin-top:3px;width:100%">弃置</button>`:''}</div>`;
@@ -368,7 +404,7 @@ send=action=>{
   socket.emit('gameAction',{roomCode,playerId:meId,action},reply=>{
     clearTimeout(pendingActionTimer);
     if(!reply?.ok)notice('gameNotice',reply?.error||'操作失败');
-    else notice('gameNotice',reply.roll?`本次移动点数：${reply.roll}`:'');
+    else notice('gameNotice',reply.roll?`掷出 ${reply.roll} 点，本回合可移动 ${reply.roll} 格`:'');
   });
 };
 // 断线重连或刷新页面后自动恢复上一局；连接恢复时也重新向服务端登记 socket，否则收不到状态。

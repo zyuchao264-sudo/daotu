@@ -178,12 +178,29 @@ async function main(){
     const here = afterRoll.public.tiles.find(tile=>tile.id===me.position);
     const affordable = afterRoll.public.tiles.filter(tile=>hexDistance(tile,here)===1&&(TERRAIN_COST[tile.type]||1)<=rolled.roll);
     if(affordable.length){
-      const moved = await clients[0].emit('gameAction',{roomCode,playerId:created.playerId,action:{type:'move',tileId:affordable[0].id}});
-      assert.equal(moved.ok,true,moved.error);
-      const afterMove = await waitForState(clients[0],current=>
-        current.public.players.find(player=>player.playerId===created.playerId).position===affordable[0].id);
-      assert.equal(afterMove.public.players.find(player=>player.playerId===created.playerId).position,affordable[0].id);
-      console.log(`✓ 移动到相邻地块 ${affordable[0].id}（${affordable[0].type}）`);
+      // 掷出的点数就是可移动格数：连续走到格数用完，验证不是“一步就要重新掷骰”。
+      let steps = 0, spent = 0, stoppedForNoTarget = false;
+      while(steps < 10){
+        const current = clients[0].latest();
+        const walker = current.public.players.find(player=>player.playerId===created.playerId);
+        if(!walker.movePoints) break;
+        const from = current.public.tiles.find(tile=>tile.id===walker.position);
+        const next = current.public.tiles
+          .filter(tile=>hexDistance(tile,from)===1&&(TERRAIN_COST[tile.type]||1)<=walker.movePoints)
+          .sort((first,second)=>(TERRAIN_COST[first.type]||1)-(TERRAIN_COST[second.type]||1))[0];
+        if(!next){ stoppedForNoTarget = true; break; }
+        const reply = await clients[0].emit('gameAction',{roomCode,playerId:created.playerId,action:{type:'move',tileId:next.id}});
+        assert.equal(reply.ok,true,reply.error);
+        spent += TERRAIN_COST[next.type]||1;
+        steps++;
+      }
+      assert.ok(steps>=1,'掷骰后至少能移动一格');
+      assert.ok(spent<=rolled.roll,`消耗的格数 ${spent} 不应超过掷出的 ${rolled.roll}`);
+      if(!stoppedForNoTarget){
+        assert.equal(spent,rolled.roll,`掷出 ${rolled.roll} 点应刚好用完 ${rolled.roll} 格`);
+        if(rolled.roll>=2) assert.ok(steps>=2,`掷出 ${rolled.roll} 点应能连续移动多格，实际只走了 ${steps} 格`);
+      }
+      console.log(`✓ 掷出 ${rolled.roll} 点后连续移动 ${steps} 格（消耗 ${spent} 格，无需重新掷骰）`);
     }else{
       console.log('· 本次骰点不足以往任意相邻地块移动，跳过移动检查');
     }

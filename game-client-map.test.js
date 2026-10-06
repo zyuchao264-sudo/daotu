@@ -65,6 +65,7 @@ function loadClient(){
     removeEventListener(){},
     dispatch(type,event){for(const handler of windowListeners[type]||[])handler(event)}
   };
+  const sent = [];
   const sandbox = {
     console, setTimeout, clearTimeout, Math, JSON, Date,
     document:{
@@ -79,7 +80,7 @@ function loadClient(){
     localStorage:{getItem:()=>null, setItem(){}, removeItem(){}},
     socket:{on(){}, emit(){}, connected:false},
     esc:value=>String(value ?? ''),
-    notice(){}, send(){}, confirm:()=>false,
+    notice(){}, send:action=>sent.push(action), confirm:()=>false,
     careers:[], readyCareerIds:new Set(), selectedCareer:'',
     state:null, meId:'p1', roomCode:'TEST01',
     $:getElement
@@ -87,7 +88,9 @@ function loadClient(){
   sandbox.globalThis = sandbox;
   vm.createContext(sandbox);
   vm.runInContext(fs.readFileSync(path.join(__dirname,'game-client.js'),'utf8'), sandbox, {filename:'game-client.js'});
-  return {sandbox, board, svg, getElement, windowStub};
+  // game-client.js 自己会包装 send 做“处理中”提示，这里在校验场景下换成记录器。
+  sandbox.send = action => sent.push(action);
+  return {sandbox, board, svg, getElement, windowStub, sent};
 }
 
 function viewBoxOf(svg){
@@ -276,5 +279,76 @@ test('地图棋子与占领标记', async t => {
     sandbox.renderMap(state, state.players[0]);
     assert.ok(getElement('mapPlayers').innerHTML.includes('1 · 甲'), '角色栏应带编号');
     assert.ok((board.innerHTML.match(/pawn-number/g) || []).length >= 2, '棋子应带编号角标');
+  });
+});
+
+const MOVE_COST = {plain:1, forest:2, hill:2, river:2, riverGod:2, desert:1, spring:1, holySpring:1, void:1, fire:1, goldMine:1, trial:1};
+
+test('移动阶段：点数即格数，点击相邻格直接移动', async t => {
+  const {sandbox, board, sent, getElement} = loadClient();
+  const state = publicState();
+  const me = state.players[0];
+  const home = state.tiles.find(tile => tile.type === 'plain'
+    && state.tiles.some(other => engine.distance(other, tile) === 1 && other.type === 'plain'));
+  me.position = home.id;
+  me.movePoints = 1;
+  state.currentPlayerId = me.playerId;
+  sandbox.state = {public:state};
+  sandbox.selectMapPlayer(me.playerId);
+
+  const reachableIds = () => [...board.innerHTML.matchAll(/class="hex-cell[^"]*reachable[^"]*" data-tile="([^"]+)"/g)].map(match => match[1]);
+
+  await t.test('只高亮当前格数走得到的相邻格', () => {
+    sandbox.renderMap(state, me);
+    const expected = state.tiles
+      .filter(tile => engine.distance(tile, home) === 1 && MOVE_COST[tile.type] <= 1)
+      .map(tile => tile.id)
+      .sort();
+    assert.deepEqual(reachableIds().sort(), expected, '剩余 1 格时应只高亮消耗 1 格的相邻格');
+    assert.ok(expected.length > 0, '测试位置应有平原邻居');
+    const blocked = state.tiles.filter(tile => engine.distance(tile, home) === 1 && MOVE_COST[tile.type] > 1).map(tile => tile.id);
+    assert.ok(blocked.every(id => !reachableIds().includes(id)), '消耗 2 格的困难地形不应被高亮');
+  });
+
+  await t.test('点击高亮的相邻格直接发出移动', () => {
+    sent.length = 0;
+    const target = reachableIds()[0];
+    sandbox.onTileClick(target);
+    // vm 里创建的对象原型与本进程不同，先转成普通 JSON 再比较
+    assert.deepEqual(JSON.parse(JSON.stringify(sent)), [{type:'move', tileId:target}], '点相邻格应直接移动，不必再点确认');
+  });
+
+  await t.test('点击走不到的格子只选择，不移动', () => {
+    sent.length = 0;
+    const far = state.tiles.find(tile => engine.distance(tile, home) === 3);
+    sandbox.onTileClick(far.id);
+    assert.equal(sent.length, 0, '非相邻格不应触发移动');
+    assert.ok(board.innerHTML.includes(`data-tile="${far.id}"`), '仍应更新选中状态');
+  });
+
+  await t.test('格数不足时不发出移动', () => {
+    sent.length = 0;
+    const hard = state.tiles.find(tile => engine.distance(tile, home) === 1 && MOVE_COST[tile.type] > 1);
+    if(hard){
+      sandbox.onTileClick(hard.id);
+      assert.equal(sent.length, 0, '剩余 1 格时不应尝试进入消耗 2 格的格子');
+    }
+  });
+
+  await t.test('格子用完后不再高亮', () => {
+    me.movePoints = null;
+    sandbox.renderMap(state, me);
+    assert.deepEqual(reachableIds(), [], '没有剩余格数时不应高亮任何格子');
+  });
+
+  await t.test('移动提示按格数显示', () => {
+    me.movePoints = 2;
+    sandbox.renderMap(state, me);
+    const hint = getElement('movementHint').textContent;
+    assert.ok(hint.includes('还剩 2 格'), `提示应说明剩余格数，实际：${hint}`);
+    const next = state.tiles.find(tile => engine.distance(tile, home) === 1 && MOVE_COST[tile.type] === 1);
+    sandbox.onTileClick(next.id);
+    const hintWithTarget = getElement('movementHint').textContent;
+    assert.ok(hintWithTarget.includes('消耗'), `选中相邻格后应说明消耗多少格，实际：${hintWithTarget}`);
   });
 });

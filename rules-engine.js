@@ -399,7 +399,7 @@ function runAction(room,player,action,careers){
     log(room,`${player.nickname} 弃置 1 张牌`);return {ok:true};
   }
   if(action.type==="rollMove"||action.type==="extraMove"){
-    if(player.movePoints!==null&&player.movePoints!==undefined)return fail("请先用完当前移动点数");
+    if(player.movePoints!==null&&player.movePoints!==undefined)return fail("请先用完当前可移动的格数");
     if(action.type==="rollMove"){if(player.moved)return fail("本回合已进行基础移动");if(player.dripHealRound===room.round||player.loanMovePenaltyRound===room.round)return fail("本回合无法进行基础移动");player.moved=true}
     else{if(player.actionsLeft<1)return fail("行动次数不足");player.actionsLeft--;player.playActionOpen=false}
     player.movePoints=1+Math.floor(Math.random()*3);
@@ -407,9 +407,9 @@ function runAction(room,player,action,careers){
     player.moveSpent=false;
     const roll=player.movePoints;
     if(action.type==="rollMove"&&hasEquipment(player,"轻便草鞋"))player.movePoints++;
-    log(room,`${player.nickname} 掷出 ${roll} 点移动`);return {ok:true,roll:player.movePoints};
+    log(room,`${player.nickname} 掷出 ${roll} 点，本回合可移动 ${player.movePoints} 格`);return {ok:true,roll:player.movePoints};
   }
-  if(action.type==="stopMove"){if(player.movePoints===null||player.movePoints===undefined)return fail("当前没有移动点数");player.movePoints=null;return {ok:true}}
+  if(action.type==="stopMove"){if(player.movePoints===null||player.movePoints===undefined)return fail("当前没有剩余移动格数");player.movePoints=null;return {ok:true}}
   // 赌徒「好赌之人」：本回合可重投一次移动骰；「赌瘾犯了」提升为两次。已经走过格子就不能再重投。
   if(action.type==="rerollMove"){
     if(player.careerId!=="gambler")return fail("只有赌徒可以重投移动骰");
@@ -426,7 +426,7 @@ function runAction(room,player,action,careers){
     if(!from||!to||distance(from,to)!==1)return fail("只能移动到相邻地块");
     if(player.movePoints===null||player.movePoints===undefined)return fail("请先投掷移动骰");
     const cost=player.ignoreTerrainCost?1:Math.max(1,(TERRAIN_COST[to.type]||1)-(player.careerId==="hunter"&&player.talent2==="a"?1:0)-(hasEquipment(player,"马车")?1:0));
-    if(player.movePoints<cost)return fail(`移动点数不足，需要 ${cost} 点`);
+    if(player.movePoints<cost)return fail(`移动格数不足，进入这里需要 ${cost} 格，当前还剩 ${player.movePoints} 格`);
     player.movePoints-=cost;player.position=to.id;player.moveSpent=true;resolveTerrain(room,player,to);
     if(player.movePoints===0)player.movePoints=null;return {ok:true};
   }

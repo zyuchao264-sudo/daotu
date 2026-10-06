@@ -18,6 +18,8 @@
 .map-pawn{cursor:pointer}
 .map-pawn:hover{filter:brightness(1.18)}
 .map-pawn.selected{filter:drop-shadow(0 0 5px #ffe29a)}
+.hex-cell.reachable{cursor:pointer}
+.hex-cell.reachable:hover{filter:brightness(1.16)}
 .hex-icon-corner{font-size:12px;text-anchor:start;opacity:.9}
 .pawn-number{font-size:9px;stroke-width:0;fill:#fdf3d8}
 .claim-ring{pointer-events:none;stroke-dasharray:7 5}
