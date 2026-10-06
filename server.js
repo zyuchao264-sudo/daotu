@@ -166,6 +166,12 @@ async function loadGameRoom(roomCode){
     const rows = await response.json();
     const room = rows?.[0]?.content;
     if(room?.roomCode){
+      if(!Array.isArray(room.tiles) || room.tiles.length===0) room.tiles = rulesEngine.createTiles();
+      room.log = Array.isArray(room.log) ? room.log : [];
+      room.discard = Array.isArray(room.discard) ? room.discard : [];
+      room.players = Array.isArray(room.players) ? room.players : [];
+      room.decks = room.decks && typeof room.decks === "object" ? room.decks : {};
+      room.equipmentDecks = room.equipmentDecks && typeof room.equipmentDecks === "object" ? room.equipmentDecks : {};
       room.players.forEach(player=>{player.connected=false;player.socketId=null});
       rooms.set(roomCode, room);
       return room;
