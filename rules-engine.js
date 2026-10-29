@@ -376,6 +376,23 @@ function act(room,player,action,careers){
     if(room.hostId!==player.playerId)return fail("只有房主可以结束游戏");
     room.phase="finished";room.winner={type:"manual",playerId:player.playerId,nickname:player.nickname};log(room,`${player.nickname} 手动结束了游戏`);return {ok:true};
   }
+  if(room.phase==="setup"){
+    if(action.type!=="setupReady")return fail("请先完成开局布置");
+    const tileId=String(action.spawnTileId||"");
+    const candidateIds=room.setup?.spawnTiles||[];
+    if(!candidateIds.includes(tileId))return fail("请选择外圈高亮出生格");
+    const occupied=room.players.find(item=>item.playerId!==player.playerId&&!item.eliminated&&item.position===tileId);
+    if(occupied)return fail("这个出生格已被其他玩家选择");
+    const presets=room.setup?.resourcePresets||{};
+    const presetId=presets[action.resourcePreset]?action.resourcePreset:"balanced";
+    const presetResources={balanced:{wood:2,stone:2,meat:2,gold:1,special:0},woodland:{wood:4,stone:1,meat:2,gold:0,special:0},warband:{wood:1,stone:2,meat:3,gold:0,special:0},merchant:{wood:2,stone:1,meat:1,gold:2,special:0}}[presetId];
+    player.position=tileId;player.resources={...presetResources};player.setupPreset=presetId;player.setupReady=true;
+    log(room,`${player.nickname} 完成开局布置`);
+    if(room.players.every(item=>item.setupReady)){
+      room.phase="playing";room.currentPlayerId=room.players[0].playerId;room.round=1;draw(room,room.players[0]);log(room,"所有玩家完成布置，首位玩家开始第一回合");
+    }
+    return {ok:true};
+  }
   if(room.phase!=="playing")return fail("对局尚未开始或已经结束");
   if(player.eliminated&&room.currentPlayerId!==player.playerId)return fail("你已被淘汰");
   if(room.currentPlayerId!==player.playerId)return fail("还没轮到你");

@@ -48,6 +48,8 @@ let mapToolbar=null;
 const commandButtons={};
 let selectedTileId = null;
 let selectedPlayerId = null;
+let setupPreset = "balanced";
+let lastCombatLog = "";
 const MAP_FIT = 960;          // 100% 缩放时短边的 viewBox 边长，恰好容纳整张地图
 const MAP_PADDING = 45;       // 六角格半宽 41 / 半高 35.5 之外再留一点余量
 const MAP_MIN_ZOOM = 0.75;
@@ -69,7 +71,12 @@ $('board').before(mapToolbarElement);
 // 这样状态刷新不会重置已选的目标/资源/建筑，也不会打断键盘焦点。
 buildCommandPanel();
 function buildCommandPanel(){
-  $('actionbar').innerHTML=`<div class="cmd-groups">
+  $('actionbar').innerHTML=`<section class="setup-panel" id="setupPanel" hidden>
+  <div class="setup-kicker">DAOTU / SETUP PHASE</div>
+  <div class="setup-heading"><div><h3>开局布置</h3><p>选择外圈出生格，再确定你的第一轮资源倾向。所有玩家确认后，首位玩家自动开始。</p></div><div class="setup-progress" id="setupProgress"></div></div>
+  <div class="setup-grid"><div class="setup-block"><span class="setup-label">01 · 出生格</span><div id="setupTileHint" class="setup-hint">点击地图上的高亮六角格</div></div><div class="setup-block"><span class="setup-label">02 · 起步资源</span><div id="setupPresets" class="setup-presets"></div></div></div>
+  <div class="setup-footer"><span id="setupStatus" class="cmd-status"></span><button class="cmd-btn cmd-primary cmd-lg" id="setupConfirm">确认布置</button></div>
+</section><div class="cmd-groups">
 <section class="cmd-group cmd-todo" role="group" data-group="todo" id="groupTodo" aria-label="本回合待办">
   <h4><span class="cmd-step" aria-hidden="true">✓</span>本回合待办<span class="cmd-state" id="todoState"></span></h4>
   <div class="cmd-row" id="todoRow"></div>
@@ -132,6 +139,7 @@ function buildCommandPanel(){
   </div>
 </div>
 <div class="cmd-notice" id="cmdNoticeHost"></div>`;
+  $('setupConfirm').onclick=()=>send({type:"setupReady",spawnTileId:selectedTileId,resourcePreset:setupPreset});
   for(const button of $('actionbar').querySelectorAll('[data-action]')){
     commandButtons[button.dataset.action]=button;
     button.onclick=()=>dispatchAction(button.dataset.action);
@@ -143,6 +151,27 @@ function buildCommandPanel(){
     noticeEl.setAttribute('aria-live','polite');
     noticeHost.append(noticeEl);
   }
+}
+
+function renderSetupPanel(publicState,me){
+  const panel=$('setupPanel');
+  if(!panel)return;
+  const setup=publicState.setup||{};
+  const inSetup=publicState.phase==="setup";
+  panel.hidden=!inSetup;
+  const groups=$('actionbar').querySelector('.cmd-groups');
+  if(groups)groups.hidden=inSetup;
+  if(!inSetup)return;
+  const readyPlayers=publicState.players.filter(player=>player.setupReady).length;
+  setText('setupProgress',`${readyPlayers}/${publicState.players.length} 已确认`);
+  const selected=selectedTileId&&setup.spawnTiles?.includes(selectedTileId)?selectedTileId:null;
+  setText('setupTileHint',selected?`已选 ${selected} · 外圈出生格`:'点击地图上的高亮六角格');
+  const presets=setup.resourcePresets||{};
+  $('setupPresets').innerHTML=Object.entries(presets).map(([id,preset])=>`<button class="setup-preset ${setupPreset===id?'selected':''}" data-preset="${esc(id)}"><strong>${esc(preset.label)}</strong><small>${esc(preset.description)}</small></button>`).join('');
+  $('setupPresets').querySelectorAll('[data-preset]').forEach(button=>button.onclick=()=>{setupPreset=button.dataset.preset;renderSetupPanel(publicState,me)});
+  const already=!!me?.setupReady;
+  const confirm=$('setupConfirm');confirm.disabled=already||!selected;confirm.textContent=already?'已确认布置':'确认布置';
+  setText('setupStatus',already?'已锁定出生格与资源，等待其他玩家。':selected?'准备完成后点击确认。':'先选一个高亮出生格。');
 }
 function setCommand(action,state={}){
   const button=commandButtons[action];
@@ -438,6 +467,7 @@ function renderMap(publicState, player){
     const occupants=publicState.players.filter(item=>item.position===tile.id&&!item.eliminated);
     const building=tile.building;
     const selected=selectedTileId===tile.id?" selected":"";
+    const setupTile=publicState.phase==="setup"&&publicState.setup?.spawnTiles?.includes(tile.id);
     const canStep=reachable.has(tile.id);
     const icon=building?"⌂":tile.feature==="forge"?"⚒":terrain.icon;
     // 有人站上去时，地形图标缩小移到左上角，把格子中央让给棋子，同时保留地形辨识。
@@ -463,7 +493,7 @@ function renderMap(publicState, player){
     const claim=tile.claim;
     const claimColor=claim?playerColor(publicState,claim.playerId):"";
     const claimMarkup=claim?`<polygon class="claim-ring" points="${innerPoints}" fill="none" stroke="${claimColor}" stroke-width="3" stroke-opacity=".92"><title>大金矿占领：${esc(claim.nickname||"")}，剩余 ${claim.roundsLeft} 回合</title></polygon><g class="claim-badge"><rect x="-21" y="-35" width="42" height="17" rx="8.5" fill="#141a19" stroke="${claimColor}" stroke-width="1.8"/><circle cx="-11" cy="-26.5" r="5.4" fill="${claimColor}"/><text class="hex-count pawn-number" x="-11" y="-23.9">${publicState.players.findIndex(item=>item.playerId===claim.playerId)+1}</text><text class="hex-count" x="7" y="-22.4">⛏${claim.roundsLeft}</text></g>`:'';
-    return `<g class="hex-cell${selected}${canStep?" reachable":""}" data-tile="${esc(tile.id)}" transform="translate(${x} ${y})"><polygon points="${hexPoints}" fill="${terrain.color}" stroke="#3f523d" stroke-width="1.2"/><polygon points="${innerPoints}" fill="none" stroke="#ffeec0" stroke-opacity=".14"/>${canStep?`<polygon points="${innerPoints}" fill="none" stroke="#ffe29a" stroke-width="2.4" stroke-dasharray="6 4" stroke-opacity=".9"/>`:''}${iconMarkup}${claimMarkup}${pawns}${tile.resource?'<circle cx="-24" cy="-20" r="5" fill="#f3d88b"/>':''}</g>`;
+    return `<g class="hex-cell${selected}${canStep?" reachable":""}${setupTile?" setup-spawn":""}" data-tile="${esc(tile.id)}" transform="translate(${x} ${y})"><polygon points="${hexPoints}" fill="${terrain.color}" stroke="#3f523d" stroke-width="1.2"/><polygon points="${innerPoints}" fill="none" stroke="#ffeec0" stroke-opacity=".14"/>${canStep?`<polygon points="${innerPoints}" fill="none" stroke="#ffe29a" stroke-width="2.4" stroke-dasharray="6 4" stroke-opacity=".9"/>`:''}${setupTile?`<polygon points="${innerPoints}" fill="none" stroke="#8ff0d0" stroke-width="3" stroke-dasharray="5 4"/>`:''}${iconMarkup}${claimMarkup}${pawns}${tile.resource?'<circle cx="-24" cy="-20" r="5" fill="#f3d88b"/>':''}</g>`;
   }).join('');
   $('board').innerHTML=`<svg class="hex-map" viewBox="0 0 900 900" role="img" aria-label="127 格六角战棋地图"><defs><filter id="mapNoise"><feTurbulence type="fractalNoise" baseFrequency=".045" numOctaves="2" seed="6"/><feColorMatrix values="0 0 0 0 0.12 0 0 0 0 0.14 0 0 0 0 0.09 0 0 0 .17 0"/></filter>${clipDefs.join('')}</defs><rect width="900" height="900" fill="#244d48"/>${cells}<rect width="900" height="900" filter="url(#mapNoise)" pointer-events="none" opacity=".16"/></svg>`;
   $('board').querySelectorAll('[data-tile]').forEach(cell=>cell.onclick=()=>onTileClick(cell.dataset.tile));
@@ -505,6 +535,10 @@ function onTileClick(tileId){
   const me=publicState.players.find(player=>player.playerId===meId);
   selectedTileId=tileId;
   renderMap(publicState,me);
+  if(publicState.phase==="setup"){
+    renderSetupPanel(publicState,me);
+    return;
+  }
   const canWalk=publicState.phase==='playing'&&publicState.currentPlayerId===meId&&!me?.eliminated&&selectedPlayerId===meId&&(me?.movePoints??0)>0;
   const tile=publicState.tiles.find(item=>item.id===tileId);
   if(canWalk&&hexDistance(me.position,tileId)===1&&terrainCostFor(me,tile)<=(me.movePoints??0))send({type:'move',tileId});
@@ -512,8 +546,15 @@ function onTileClick(tileId){
 function renderGame(payload){
   $('auth').classList.add('hidden');$('lobby').classList.add('hidden');$('game').classList.remove('hidden');
   const publicState=payload.public;
-  document.querySelector('.board-hint').textContent='点相邻高亮格移动（骰点＝可移动格数，困难地形 2 格）；点其他格只选择目标。';
   const me=publicState.players.find(player=>player.playerId===meId);
+  renderSetupPanel(publicState,me);
+  if(publicState.phase==="setup"){
+    selectedPlayerId=meId;
+    $('turn').textContent='开局布置 · 选择出生格与资源方案';
+    renderMap(publicState,me);
+    return;
+  }
+  document.querySelector('.board-hint').textContent='点相邻高亮格移动（骰点＝可移动格数，困难地形 2 格）；点其他格只选择目标。';
   // 默认选中自己的角色，省掉“先点自己再操作”的一步。
   if(!selectedPlayerId&&me)selectedPlayerId=meId;
   const playing=publicState.phase==="playing";
@@ -525,6 +566,12 @@ function renderGame(payload){
   $('players').innerHTML=publicState.players.map(player=>`<div class="player ${player.playerId===publicState.currentPlayerId?'current':''}"><div class="avatar">${roleImage(player.careerId)}</div><div class="player-main"><div class="player-name">${esc(player.nickname)} ${player.eliminated?'· 已淘汰':''}</div><div class="player-meta">${esc(careers.find(career=>career.id===player.careerId)?.name||'')} · ❤ ${player.hp}/${player.maxHp} · ★ ${player.score} · 手牌 ${player.handCount}</div></div>${myTurn&&player.playerId!==meId&&!player.eliminated&&hexDistance(player.position,me?.position)<=attackRange?`<button data-attack="${player.playerId}">攻击</button>`:''}</div>`).join('');
   $('players').querySelectorAll('[data-attack]').forEach(button=>button.onclick=()=>send({type:"attack",targetPlayerId:button.dataset.attack,resourceChoice:$('resourceChoice')?.value}));
   $('log').innerHTML=publicState.log.slice().reverse().map(entry=>`<div>${esc(entry.message)}</div>`).join('');
+  const newestLog=publicState.log.at(-1)?.message||'';
+  if(newestLog&&newestLog!==lastCombatLog&&(newestLog.includes('造成')||newestLog.includes('攻击')||newestLog.includes('淘汰'))){
+    lastCombatLog=newestLog;
+    const board=$('board'); board.classList.remove('combat-hit'); void board.offsetWidth; board.classList.add('combat-hit');
+    notice('gameNotice',`⚔ ${newestLog}`);
+  }
   renderMap(publicState,me);
   const resourceLabels={wood:"木",stone:"石",meat:"肉",gold:"金",special:"专属"};
   const career=careers.find(item=>item.id===me?.careerId);

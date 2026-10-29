@@ -116,11 +116,11 @@ function validTiles(tiles){
 }
 
 function publicPlayer(player, round){
-  return {playerId:player.playerId, nickname:player.nickname, careerId:player.careerId, connected:!!player.connected, ready:!!player.ready, hp:player.hp, maxHp:player.maxHp, score:player.score, resources:{...player.resources}, position:player.position, eliminated:!!player.eliminated, actionsLeft:player.actionsLeft, moved:!!player.moved, movePoints:player.movePoints, handCount:player.hand?.length||0, secretCount:player.secrets?.length||0, equipment:(player.equipment||[]).map(card=>({name:card.name,type:card.type})), talent2:player.talent2, talent3:player.talent3, aimUntilRound:player.aimUntilRound||0, stealthUntilRound:player.stealthUntilRound||0, dog:!!player.dog, burn:player.burn||0, blessing:!!player.blessing, trial:player.trial||null, attackRange:rulesEngine.attackRange(player, round), goldMine:player.goldMine||null, goldMineCollected:player.goldMineCollected||0, rerollLeft:player.rerollLeft||0, moveSpent:!!player.moveSpent, ignoreTerrainCost:!!player.ignoreTerrainCost, buildsThisTurn:!!player.buildsThisTurn, raidsThisTurn:!!player.raidsThisTurn, playActionOpen:!!player.playActionOpen, stunnedUntilRound:player.stunnedUntilRound||0, talentSupport:rulesEngine.talentSupport(player.careerId)};
+  return {playerId:player.playerId, nickname:player.nickname, careerId:player.careerId, connected:!!player.connected, ready:!!player.ready, setupReady:!!player.setupReady, setupPreset:player.setupPreset||null, hp:player.hp, maxHp:player.maxHp, score:player.score, resources:{...player.resources}, position:player.position, eliminated:!!player.eliminated, actionsLeft:player.actionsLeft, moved:!!player.moved, movePoints:player.movePoints, handCount:player.hand?.length||0, secretCount:player.secrets?.length||0, equipment:(player.equipment||[]).map(card=>({name:card.name,type:card.type})), talent2:player.talent2, talent3:player.talent3, aimUntilRound:player.aimUntilRound||0, stealthUntilRound:player.stealthUntilRound||0, dog:!!player.dog, burn:player.burn||0, blessing:!!player.blessing, trial:player.trial||null, attackRange:rulesEngine.attackRange(player, round), goldMine:player.goldMine||null, goldMineCollected:player.goldMineCollected||0, rerollLeft:player.rerollLeft||0, moveSpent:!!player.moveSpent, ignoreTerrainCost:!!player.ignoreTerrainCost, buildsThisTurn:!!player.buildsThisTurn, raidsThisTurn:!!player.raidsThisTurn, playActionOpen:!!player.playActionOpen, stunnedUntilRound:player.stunnedUntilRound||0, talentSupport:rulesEngine.talentSupport(player.careerId)};
 }
 
 function publicRoom(room){
-  return {roomCode:room.roomCode, phase:room.phase, hostId:room.hostId, maxPlayers:room.maxPlayers || MAX_PLAYERS, round:room.round, currentPlayerId:room.currentPlayerId, winner:room.winner, players:room.players.map(player=>publicPlayer(player, room.round)), tiles:room.tiles, discard:room.discard.slice(-20), log:room.log.slice(-40)};
+  return {roomCode:room.roomCode, phase:room.phase, hostId:room.hostId, maxPlayers:room.maxPlayers || MAX_PLAYERS, round:room.round, currentPlayerId:room.currentPlayerId, winner:room.winner, setup:room.setup||null, players:room.players.map(player=>publicPlayer(player, room.round)), tiles:room.tiles, discard:room.discard.slice(-20), log:room.log.slice(-40)};
 }
 
 function privateRoom(room, playerId){
@@ -197,6 +197,36 @@ function spawnTiles(room, count){
   return Array.from({length:count},(_,index)=>pool[(index*step)%pool.length]);
 }
 
+const SETUP_PRESETS = {
+  balanced:{label:"均衡起步",description:"木 2 · 石 2 · 肉 2 · 金 1",resources:{wood:2,stone:2,meat:2,gold:1,special:0}},
+  woodland:{label:"林地开拓",description:"木 4 · 石 1 · 肉 2",resources:{wood:4,stone:1,meat:2,gold:0,special:0}},
+  warband:{label:"前线备战",description:"木 1 · 石 2 · 肉 3",resources:{wood:1,stone:2,meat:3,gold:0,special:0}},
+  merchant:{label:"商路先行",description:"木 2 · 石 1 · 肉 1 · 金 2",resources:{wood:2,stone:1,meat:1,gold:2,special:0}}
+};
+
+function setupRoom(room, player, action){
+  if(room.phase!=="setup")return {ok:false,error:"当前不是开局布置阶段"};
+  const tileId=String(action.spawnTileId||player.position||"");
+  const candidateIds=room.setup?.spawnTiles||[];
+  if(!candidateIds.includes(tileId))return {ok:false,error:"请选择外圈高亮出生格"};
+  const occupied=room.players.find(item=>item.playerId!==player.playerId&&!item.eliminated&&item.position===tileId);
+  if(occupied)return {ok:false,error:"这个出生格已被其他玩家选择"};
+  const preset=SETUP_PRESETS[action.resourcePreset]||SETUP_PRESETS.balanced;
+  player.position=tileId;
+  player.resources={...preset.resources};
+  player.setupPreset=action.resourcePreset in SETUP_PRESETS?action.resourcePreset:"balanced";
+  player.setupReady=true;
+  log(room,`${player.nickname} 完成开局布置：${preset.label}`);
+  if(room.players.every(item=>item.setupReady)){
+    room.phase="playing";
+    room.currentPlayerId=room.players[0].playerId;
+    room.round=1;
+    rulesEngine.draw(room,room.players[0]);
+    log(room,"所有玩家完成布置，首位玩家开始第一回合");
+  }
+  return {ok:true};
+}
+
 function startRoom(room){
   if(room.phase!=="lobby") return {ok:false,error:"对局已经开始或结束"};
   const targetPlayers = room.maxPlayers || MAX_PLAYERS;
@@ -206,7 +236,7 @@ function startRoom(room){
   room.decks = decks.decks; room.equipmentDecks = decks.equipmentDecks;
   const spawnRing = spawnTiles(room, room.players.length);
   room.players.forEach((player, index) => {
-    player.hp = player.maxHp; player.score = 0; player.resources = {wood:1, stone:1, meat:1, gold:0, special:0};
+    player.hp = player.maxHp; player.score = 0; player.resources = {...SETUP_PRESETS.balanced.resources};
     player.position = spawnRing[index].id;
     player.actionsLeft = 2; player.moved = false; player.movePoints=null; player.hand=[]; player.discard=[]; player.equipmentDiscard=[];
     rulesEngine.draw(room,player,3);
@@ -220,9 +250,10 @@ function startRoom(room){
     player.trial=null; player.debtPending=false; player.fireTiles=[];
     player.goldMine=null; player.goldMineCollected=0;
     player.rerollLeft=player.careerId==="gambler"?1:0; player.moveSpent=false;
+    player.setupReady=false; player.setupPreset=null;
   });
-  rulesEngine.draw(room,room.players[0]);
-  room.phase = "playing"; room.currentPlayerId = room.players[0].playerId; room.round = 1; appendLog(room, "对局开始，首位玩家抽取回合牌"); return {ok:true};
+  room.setup={spawnTiles:spawnRing.map(tile=>tile.id),resourcePresets:Object.fromEntries(Object.entries(SETUP_PRESETS).map(([id,preset])=>[id,{label:preset.label,description:preset.description}]))};
+  room.phase = "setup"; room.currentPlayerId = null; room.round = 1; appendLog(room, "进入开局布置：选择出生格与起步资源"); return {ok:true};
 }
 
 // 从supabase读取id=1记录

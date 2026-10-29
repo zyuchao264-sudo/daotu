@@ -138,8 +138,18 @@ async function main(){
 
     const started = await clients[0].emit('startRoom',{roomCode,playerId:created.playerId});
     assert.equal(started.ok,true,started.error);
+    const setupStates = await Promise.all(clients.map(client=>waitForState(client,state=>state.public.phase==='setup')));
+    const setup = setupStates[0].public.setup;
+    assert.equal(setup.spawnTiles.length,6,'开局应提供每位玩家一个外圈出生格');
+    assert.ok(Object.keys(setup.resourcePresets).length>=3,'开局应提供资源方案');
+    console.log('✓ 进入开局布置阶段，出生格与资源方案已下发');
+    for(let index=0;index<clients.length;index++){
+      const player = setupStates[index].public.players.find(item=>item.playerId===(index===0?created.playerId:joinReplies[index-1].playerId));
+      const reply = await clients[index].emit('gameAction',{roomCode,playerId:player.playerId,action:{type:'setupReady',spawnTileId:setup.spawnTiles[index],resourcePreset:index%2?'woodland':'balanced'}});
+      assert.equal(reply.ok,true,reply.error);
+    }
     const playing = await Promise.all(clients.map(client=>waitForState(client,state=>state.public.phase==='playing')));
-    console.log('✓ 开局成功，6 名玩家都收到对局状态');
+    console.log('✓ 6 名玩家完成布置并收到正式对局状态');
 
     const state = playing[0];
     assert.equal(state.public.players.length,6);
@@ -149,6 +159,7 @@ async function main(){
     assert.equal(new Set(spawns).size,6,'出生点不能重叠');
     assert.ok(!spawns.includes('0:0'),'出生点不能落在中心生存试炼板块');
     assert.ok(state.public.players.every(player=>player.hp>0&&player.hp===player.maxHp),'开局应满血');
+    assert.ok(state.public.players.every(player=>Object.values(player.resources||{}).some(value=>value>0)),'开局资源应已发放');
     console.log(`✓ 出生点互不重叠且避开中心：${spawns.join(' ')}`);
 
     assert.equal(state.private.hand.length,4,'首位玩家应有 3 张起始手牌 + 1 张回合抽牌');
