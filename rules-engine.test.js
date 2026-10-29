@@ -73,9 +73,36 @@ test('unsupported card is not consumed',()=>{
   assert.equal(player.actionsLeft,2);
 });
 
+test('出牌需要先开启基础行动窗口，窗口内可连续出牌',()=>{
+  const {room,player}=roomWithPlayer();
+  player.hand=[{uid:'heal',name:'舔舐伤口',type:'行动卡',cost:'无'},{uid:'hunt',name:'狩猎',type:'行动卡',cost:'1木'}];
+  assert.equal(engine.act(room,player,{type:'playCard',cardUid:'heal'},[]).ok,false);
+  assert.equal(player.actionsLeft,2);
+  assert.equal(engine.act(room,player,{type:'openPlayAction'},[]).ok,true);
+  assert.equal(player.actionsLeft,1);
+  assert.equal(engine.act(room,player,{type:'playCard',cardUid:'heal'},[]).ok,true);
+  assert.equal(engine.act(room,player,{type:'playCard',cardUid:'hunt'},[]).ok,true);
+  assert.equal(player.actionsLeft,1);
+});
+
+test('陷阱投放与猎狗卡牌要求并使用相应目标',()=>{
+  const {room,players}=roomWithPlayers(2);
+  const hunter=players[0],target=players[1];
+  hunter.hand=[{uid:'trap',name:'陷阱投放',type:'行动卡',cost:'1木1石'},{uid:'rush',name:'冲吧！猎狗',type:'行动卡',cost:'2肉'}];
+  hunter.resources={wood:3,stone:3,meat:3,gold:0,special:0};hunter.dog=true;
+  const trapTile=room.tiles.find(tile=>engine.distance(tile,{q:0,r:0})===1);
+  hunter.position='0:0';target.position=trapTile.id;
+  assert.equal(engine.act(room,hunter,{type:'openPlayAction'},[]).ok,true);
+  assert.equal(engine.act(room,hunter,{type:'playCard',cardUid:'trap',tileId:trapTile.id},[]).ok,true);
+  assert.equal(trapTile.trap.ownerId,hunter.playerId);
+  assert.equal(engine.act(room,hunter,{type:'playCard',cardUid:'rush',targetPlayerId:target.playerId},[]).ok,true);
+  assert.equal(target.hp,8,'猎狗基础冲锋伤害为 0');
+});
+
 test('equipment replaces its slot and remains separate from hand',()=>{
   const {room,player}=roomWithPlayer();
   player.hand=[{uid:'shoes-1',name:'轻便草鞋',type:'鞋',cost:'无'},{uid:'shoes-2',name:'马车',type:'防具',cost:'无'}];
+  assert.equal(engine.act(room,player,{type:'openPlayAction'},[]).ok,true);
   assert.equal(engine.act(room,player,{type:'playCard',cardUid:'shoes-1'},[]).ok,true);
   assert.equal(player.equipment[0].name,'轻便草鞋');
   assert.equal(player.hand.length,1);
@@ -100,6 +127,7 @@ test('resource conversion validates funds before consuming a card',()=>{
   player.hand=[{uid:'swap',name:'钱是万能的',type:'行动卡',cost:'x铜币'}];
   assert.equal(engine.act(room,player,{type:'playCard',cardUid:'swap',resourceChoice:'gold',quantity:3},[]).ok,false);
   assert.equal(player.hand.length,1);
+  assert.equal(engine.act(room,player,{type:'openPlayAction'},[]).ok,true);
   assert.equal(engine.act(room,player,{type:'playCard',cardUid:'swap',resourceChoice:'gold',quantity:2},[]).ok,true);
   assert.equal(player.resources.gold,2);
   assert.equal(player.resources.special,0);
@@ -163,6 +191,7 @@ test('牌库为空时抽牌失败且不消耗资源与行动',()=>{
 test('被替换的装备只洗回装备牌库，不混入行动牌库',()=>{
   const {room,player}=roomWithPlayer();
   player.hand=[{uid:'shoes-1',name:'轻便草鞋',type:'鞋',cost:'无'},{uid:'shoes-2',name:'轻便草鞋',type:'鞋',cost:'无'}];
+  assert.equal(engine.act(room,player,{type:'openPlayAction'},[]).ok,true);
   assert.equal(engine.act(room,player,{type:'playCard',cardUid:'shoes-1'},[]).ok,true);
   assert.equal(engine.act(room,player,{type:'playCard',cardUid:'shoes-2'},[]).ok,true);
   assert.equal((player.discard||[]).length,0,'装备不能进入行动牌弃牌堆');
@@ -190,6 +219,7 @@ test('鹰眼每回合只能进行一次基础攻击',()=>{
 test('隐秘行踪只在行动真正结算后结束',()=>{
   const {room,player}=roomWithPlayer();
   player.hand=[{uid:'st',name:'隐秘行踪',type:'行动卡',cost:'2肉'}];
+  assert.equal(engine.act(room,player,{type:'openPlayAction'},[]).ok,true);
   assert.equal(engine.act(room,player,{type:'playCard',cardUid:'st'},[]).ok,true);
   assert.ok(player.stealthUntilRound>room.round,'打出行踪卡本身不应结束隐秘行踪');
   player.discard=[];

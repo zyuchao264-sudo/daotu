@@ -196,6 +196,7 @@ function beginTurn(room,player){
   player.actionsLeft=2;player.moved=false;player.movePoints=null;
   player.buildsThisTurn=0;player.raidsThisTurn=0;player.raidUses=0;player.attacksThisTurn=0;player.playActionOpen=false;player.coatUsed=false;
   player.moveSpent=false;
+  if(player.dogReturnRound&&room.round>=player.dogReturnRound){player.dog=true;player.dogReturnRound=0;log(room,`${player.nickname} 的猎狗返回身边`)}
   player.rerollLeft=player.careerId==="gambler"?(player.talent2==="a"?2:1):0;
   if(player.debtPending){
     if(player.resources.gold>=2)player.resources.gold-=2;
@@ -256,6 +257,12 @@ function resolveTerrain(room,player,tile){
     if(canPay(player,{gold:5,meat:4})){pay(player,{gold:5,meat:4});player.blessing=true;log(room,`${player.nickname} 获得河神庇护`)}
     else{player.score=Math.max(0,player.score-3);player.stunnedUntilRound=room.round+1;log(room,`${player.nickname} 无法上供河神，失去 3 分并停滞`)}
   }
+  if(tile.trap&&tile.trap.ownerId!==player.playerId&&!player.eliminated){
+    const trap=tile.trap;tile.trap=null;
+    const roll=1+Math.floor(Math.random()*3);
+    if(roll===1){player.stunnedUntilRound=Math.max(player.stunnedUntilRound||0,room.round+1);log(room,`${player.nickname} 触发陷阱，掷出 ${roll}：下回合无法进行基础行动`) }
+    else{const dealt=reduceDamage(player,1+(trap.damageBonus||0),room.round);player.hp-=dealt;log(room,`${player.nickname} 触发陷阱，掷出 ${roll}：受到 ${dealt} 点伤害`);eliminate(room,player)}
+  }
 }
 
 function parseCost(text){
@@ -274,7 +281,7 @@ function attackRange(player,round){
 }
 
 const MOVE_ACTIONS=new Set(["rollMove","rerollMove","extraMove","move","stopMove"]);
-const STEALTH_SAFE_ACTIONS=new Set(["discard","closePlayAction","endTurn","playCard"]);
+const STEALTH_SAFE_ACTIONS=new Set(["discard","closePlayAction","openPlayAction","endTurn","playCard"]);
 // 隐秘行踪：主动做出除移动以外的行动会提前结束该状态（打出行踪卡本身除外）。
 function endStealth(room,player){
   if(!(player.stealthUntilRound>room.round))return false;
@@ -284,14 +291,14 @@ function endStealth(room,player){
 }
 
 function playCard(room,player,action){
+  if(!player.playActionOpen)return fail("请先使用一次基础行动进入出牌阶段");
   const index=player.hand.findIndex(card=>card.uid===action.cardUid);if(index<0)return fail("手牌中没有这张牌");
   const card=player.hand[index];
   if(card.type==="奥秘卡")return fail("奥秘卡只能在触发条件满足时使用；当前触发流程尚未开放");
   const slot={武器:"weapon",护具:"armor",防具:"armor",鞋:"shoes",道具:"item",宠物:"pet"}[card.type];
-  const supportedEquipment=new Set(["轻便草鞋","草药","轻皮衣","黑大衣","马车"]);
+  const supportedEquipment=new Set(["轻便草鞋","草药","轻皮衣","黑大衣","马车","捕兽夹","哨子"]);
   if(slot){
     if(!supportedEquipment.has(card.name))return fail("这件装备的效果尚未接入，暂不能装备");
-    if(!player.playActionOpen){if(player.actionsLeft<1)return fail("行动次数不足");player.actionsLeft--;player.playActionOpen=true}
     endStealth(room,player);
     const old=player.equipment.find(item=>item.slot===slot);
     // 被替换的装备进入装备弃牌堆，不能混进职业行动牌库。
@@ -305,10 +312,15 @@ function playCard(room,player,action){
   if(card.name==="止血绷带"&&hasEquipment(player,"草药"))cost.wood=0;
   if(!canPay(player,cost))return fail("支付卡牌费用的资源不足");
   const healing=card.name==="止血绷带"?2:card.name==="舔舐伤口"?1:0;
+  const trapDeploy=card.name==="陷阱投放";
+  const trapRecycle=card.name==="陷阱回收";
   const hunting=card.name==="狩猎";
+  const scavenging=card.name==="拾荒";
   const drawing=card.name==="整备";
   const advancing=card.name==="前进";
   const summonDog=card.name==="召唤猎狗";
+  const dogRush=card.name==="冲吧！猎狗";
+  const dogGuard=card.name==="誓死捍卫主人";
   const stealth=card.name==="隐秘行踪";
   const aiming=card.name==="战术瞄准";
   const dogEvolution=card.name==="猎狗进化";
@@ -332,23 +344,39 @@ function playCard(room,player,action){
   const target=room.players.find(item=>item.playerId===action.targetPlayerId&&!item.eliminated);
   const playerTile=findTile(room,player.position);
   const targetedAttack=card.name==="瞄准射击"||card.name==="放暗箭";
+  const targetTile=findTile(room,action.tileId||action.targetTileId);
   if(targetedAttack&&(!target||target===player||distance(playerTile,findTile(room,target.position))>2||target.stealthUntilRound>room.round))return fail("请选择两格内且未潜行的目标玩家");
   if(lucky&&(!target||distance(playerTile,findTile(room,target.position))>3))return fail("请选择三格内玩家");
+  if((trapDeploy||trapRecycle)&&(!targetTile||distance(playerTile,targetTile)>2))return fail("请选择两格内的目标地块");
+  if(trapDeploy&&targetTile.trap)return fail("该地块已有陷阱");
+  if(trapRecycle&&(!targetTile.trap||targetTile.trap.ownerId!==player.playerId))return fail("只能回收自己放置的陷阱");
+  if((scavenging||dogRush||dogGuard||dogEvolution)&&!player.dog)return fail("需要装备猎狗才能使用这张牌");
+  if((dogRush||dogGuard)&&(!target||target===player||distance(playerTile,findTile(room,target.position))>2||target.stealthUntilRound>room.round))return fail("请选择两格内且未潜行的目标玩家");
   if((wealthSwap||chipSwap||gamblerGain||loan||blankCheque)&&!["wood","stone","meat","gold"].includes(resourceChoice))return fail("请选择资源种类");
   if((wealthSwap||chipSwap)&&(!Number.isInteger(quantity)||quantity<1||quantity>10))return fail("置换数量需为 1～10");
   if(wealthSwap&&player.resources.special<quantity)return fail("铜币不足");
   if(chipSwap&&player.resources[resourceChoice]<quantity)return fail("基础资源不足");
   if(gamblerGain&&player.resources[resourceChoice]<1)return fail("需要支付 1 份基础资源");
   if(blackGold&&player.resources.special<4)return fail("黑金需要 4 枚欺诈币");
-  if(!healing&&!hunting&&!drawing&&!advancing&&!summonDog&&!stealth&&!aiming&&!dogEvolution&&!healingMerchant&&!blackGold&&!blackMarket&&!equipDraw&&!targetedAttack&&!wealthSwap&&!chipSwap&&!gamblerGain&&!loan&&!lucky&&!escape&&!paymentRain&&!painkiller&&!drip&&!weak&&!blankCheque)return fail("此卡效果尚未接入，暂不能打出，手牌与资源不会扣除");
-  if(!player.playActionOpen){if(player.actionsLeft<1)return fail("行动次数不足");player.actionsLeft--;player.playActionOpen=true}
+  if(!healing&&!trapDeploy&&!trapRecycle&&!hunting&&!scavenging&&!drawing&&!advancing&&!summonDog&&!dogRush&&!dogGuard&&!stealth&&!aiming&&!dogEvolution&&!healingMerchant&&!blackGold&&!blackMarket&&!equipDraw&&!targetedAttack&&!wealthSwap&&!chipSwap&&!gamblerGain&&!loan&&!lucky&&!escape&&!paymentRain&&!painkiller&&!drip&&!weak&&!blankCheque&&card.name!=="猎人背包")return fail("此卡效果尚未接入，暂不能打出，手牌与资源不会扣除");
   if(card.name!=="隐秘行踪")endStealth(room,player);
   pay(player,cost);player.hand.splice(index,1);discardPile(player,false).push(card);
   if(healing)player.hp=Math.min(player.maxHp,player.hp+healing);
+  if(trapDeploy)targetTile.trap={ownerId:player.playerId,ownerName:player.nickname,damageBonus:hasEquipment(player,"捕兽夹")?1:0};
+  if(trapRecycle){targetTile.trap=null;player.trapReady=true;log(room,`${player.nickname} 回收了陷阱，可在下一次陷阱投放时重新布置`)}
   if(hunting)gain(player,"meat",player.dog?2:1);
+  if(scavenging){
+    player.dog=false;player.dogReturnRound=room.round+2;
+    const firstRoll=1+Math.floor(Math.random()*3),secondRoll=1+Math.floor(Math.random()*3);
+    const resource=["wood","stone","meat"].includes(action.resourceChoice)?action.resourceChoice:"wood";
+    gain(player,resource,firstRoll+secondRoll);
+    log(room,`${player.nickname} 派猎狗拾荒，掷出 ${firstRoll}+${secondRoll}，获得 ${firstRoll+secondRoll} ${RESOURCE_NAMES[resource]}`);
+  }
   if(drawing)draw(room,player,1,true);
   if(advancing)player.movePoints=(player.movePoints||0)+2+(player.talent2==="a"?1:0);
   if(summonDog)player.dog=true;
+  if(dogRush){const dealt=reduceDamage(target,Number(player.dogDamage||0),room.round);target.hp-=dealt;eliminate(room,target);log(room,`${player.nickname} 派出猎狗追加攻击，造成 ${dealt} 伤害`)}
+  if(dogGuard){target.moveBlockedUntilRound=Math.max(target.moveBlockedUntilRound||0,room.round+1);player.dog=false;log(room,`${player.nickname} 让猎狗缠住 ${target.nickname}，其下回合无法移动`)}
   if(stealth)player.stealthUntilRound=room.round+2;
   if(aiming)player.aimUntilRound=room.round+2;
   if(dogEvolution)player.dogDamage=(player.dogDamage||0)+1;
@@ -368,6 +396,7 @@ function playCard(room,player,action){
   if(drip)player.dripHealRound=room.round+1;
   if(weak){player.weakShield=2;player.weakShieldHit=false}
   if(blankCheque){gain(player,resourceChoice,3);player.debtPending=true}
+  if(card.name==="猎人背包"){player.equipment=player.equipment.filter(item=>item.slot!=="item");player.equipment.push({...card,name:"猎人背包",slot:"item"})}
   log(room,`${player.nickname} 打出了 ${card.name}`);return {ok:true};
 }
 
@@ -379,13 +408,13 @@ function act(room,player,action,careers){
   if(room.phase==="setup"){
     if(action.type!=="setupReady")return fail("请先完成开局布置");
     const tileId=String(action.spawnTileId||"");
-    const candidateIds=room.setup?.spawnTiles||[];
+    const candidateIds=room.setup?.spawnOptions?.[player.playerId]||room.setup?.spawnTiles||[];
     if(!candidateIds.includes(tileId))return fail("请选择外圈高亮出生格");
     const occupied=room.players.find(item=>item.playerId!==player.playerId&&!item.eliminated&&item.position===tileId);
     if(occupied)return fail("这个出生格已被其他玩家选择");
     const presets=room.setup?.resourcePresets||{};
     const presetId=presets[action.resourcePreset]?action.resourcePreset:"balanced";
-    const presetResources={balanced:{wood:2,stone:2,meat:2,gold:1,special:0},woodland:{wood:4,stone:1,meat:2,gold:0,special:0},warband:{wood:1,stone:2,meat:3,gold:0,special:0},merchant:{wood:2,stone:1,meat:1,gold:2,special:0}}[presetId];
+    const presetResources={balanced:{wood:1,stone:1,meat:2,gold:0,special:0},woodland:{wood:2,stone:1,meat:1,gold:0,special:0},warband:{wood:1,stone:2,meat:1,gold:0,special:0},merchant:{wood:1,stone:1,meat:2,gold:0,special:0}}[presetId];
     player.position=tileId;player.resources={...presetResources};player.setupPreset=presetId;player.setupReady=true;
     log(room,`${player.nickname} 完成开局布置`);
     if(room.players.every(item=>item.setupReady)){
@@ -416,6 +445,7 @@ function runAction(room,player,action,careers){
     log(room,`${player.nickname} 弃置 1 张牌`);return {ok:true};
   }
   if(action.type==="rollMove"||action.type==="extraMove"){
+    if(player.moveBlockedUntilRound>room.round)return fail("猎狗缠住了你，本回合无法移动");
     if(player.movePoints!==null&&player.movePoints!==undefined)return fail("请先用完当前可移动的格数");
     if(action.type==="rollMove"){if(player.moved)return fail("本回合已进行基础移动");if(player.dripHealRound===room.round||player.loanMovePenaltyRound===room.round)return fail("本回合无法进行基础移动");player.moved=true}
     else{if(player.actionsLeft<1)return fail("行动次数不足");player.actionsLeft--;player.playActionOpen=false}
@@ -439,6 +469,7 @@ function runAction(room,player,action,careers){
     log(room,`${player.nickname} 重投移动骰，得到 ${player.movePoints} 点`);return {ok:true,roll:player.movePoints};
   }
   if(action.type==="move"){
+    if(player.moveBlockedUntilRound>room.round)return fail("猎狗缠住了你，本回合无法移动");
     const from=findTile(room,player.position),to=findTile(room,action.tileId);
     if(!from||!to||distance(from,to)!==1)return fail("只能移动到相邻地块");
     if(player.movePoints===null||player.movePoints===undefined)return fail("请先投掷移动骰");
@@ -448,6 +479,13 @@ function runAction(room,player,action,careers){
     if(player.movePoints===0)player.movePoints=null;return {ok:true};
   }
   if(action.type==="playCard")return playCard(room,player,action);
+  if(action.type==="openPlayAction"){
+    if(player.playActionOpen)return fail("已经处于出牌阶段");
+    if(player.actionsLeft<1)return fail("行动次数不足");
+    player.actionsLeft--;player.playActionOpen=true;
+    log(room,`${player.nickname} 进入出牌阶段，本回合可连续打出多张牌`);
+    return {ok:true};
+  }
   if(action.type==="closePlayAction"){player.playActionOpen=false;return {ok:true}}
   if(player.actionsLeft<1)return fail("行动次数不足");
   if(action.type==="draw"){

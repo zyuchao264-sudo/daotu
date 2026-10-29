@@ -36,7 +36,7 @@ function terrainCostFor(player,tile){
   const discount=(player?.careerId==="hunter"&&player.talent2==="a"?1:0)+(player?.equipment?.some(card=>card.name==="马车")?1:0);
   return Math.max(1,base-discount);
 }
-const SUPPORTED_CARDS = new Set(["止血绷带","舔舐伤口","狩猎","整备","前进","召唤猎狗","隐秘行踪","战术瞄准","猎狗进化","金盆洗手","黑金","黑市交易","投资军火","瞄准射击","放暗箭","轻便草鞋","草药","轻皮衣","黑大衣","马车","钱是万能的","换取筹码","哪有赌徒天天输","贷款","好运or厄运","逃跑是门技术","撒钱","止痛药","打吊水","假意示弱","空头支票"]);
+const SUPPORTED_CARDS = new Set(["止血绷带","舔舐伤口","陷阱投放","陷阱回收","狩猎","拾荒","整备","前进","召唤猎狗","冲吧！猎狗","誓死捍卫主人","隐秘行踪","战术瞄准","猎狗进化","猎人背包","金盆洗手","黑金","黑市交易","投资军火","瞄准射击","放暗箭","轻便草鞋","草药","轻皮衣","黑大衣","马车","捕兽夹","哨子","钱是万能的","换取筹码","哪有赌徒天天输","贷款","好运or厄运","逃跑是门技术","撒钱","止痛药","打吊水","假意示弱","空头支票"]);
 // 每名玩家一个固定颜色，地图棋子、占领标记与角色栏共用，方便一眼对应。
 // 必须在这里声明：playerColor() 会在 renderMap 里被调用，若声明晚于任何顶层初始化就可能踩到暂时性死区。
 const PLAYER_COLORS=["#f0c04a","#63b8d6","#e0806d","#8fd07a","#c69ae0","#e6df7c"];
@@ -74,7 +74,7 @@ function buildCommandPanel(){
   $('actionbar').innerHTML=`<section class="setup-panel" id="setupPanel" hidden>
   <div class="setup-kicker">DAOTU / SETUP PHASE</div>
   <div class="setup-heading"><div><h3>开局布置</h3><p>选择外圈出生格，再确定你的第一轮资源倾向。所有玩家确认后，首位玩家自动开始。</p></div><div class="setup-progress" id="setupProgress"></div></div>
-  <div class="setup-grid"><div class="setup-block"><span class="setup-label">01 · 出生格</span><div id="setupTileHint" class="setup-hint">点击地图上的高亮六角格</div></div><div class="setup-block"><span class="setup-label">02 · 起步资源</span><div id="setupPresets" class="setup-presets"></div></div></div>
+  <div class="setup-grid"><div class="setup-block"><span class="setup-label">01 · 出生板块拼接带</span><div id="setupTileHint" class="setup-hint">选择最外圈长条上的初始点</div><div id="setupStrip" class="setup-strip"></div></div><div class="setup-block"><span class="setup-label">02 · 起步资源（木 / 石 / 肉共 4）</span><div id="setupPresets" class="setup-presets"></div></div></div>
   <div class="setup-footer"><span id="setupStatus" class="cmd-status"></span><button class="cmd-btn cmd-primary cmd-lg" id="setupConfirm">确认布置</button></div>
 </section><div class="cmd-groups">
 <section class="cmd-group cmd-todo" role="group" data-group="todo" id="groupTodo" aria-label="本回合待办">
@@ -97,6 +97,7 @@ function buildCommandPanel(){
     <button class="cmd-btn" data-action="draw">抽牌</button>
     <button class="cmd-btn" data-action="drawExtra">抽两张 · 1肉</button>
     <button class="cmd-btn" data-action="forge">铁匠铺抽装备</button>
+    <button class="cmd-btn cmd-primary" data-action="openPlayAction">进入出牌阶段</button>
   </div>
 </section>
 <section class="cmd-group" role="group" data-group="act" id="groupAct" aria-label="基础行动">
@@ -164,9 +165,15 @@ function renderSetupPanel(publicState,me){
   if(!inSetup)return;
   const readyPlayers=publicState.players.filter(player=>player.setupReady).length;
   setText('setupProgress',`${readyPlayers}/${publicState.players.length} 已确认`);
-  const selected=selectedTileId&&setup.spawnTiles?.includes(selectedTileId)?selectedTileId:null;
+  const setupChoices=setup.spawnOptions?.[meId]||setup.spawnTiles||[];
+  const selected=selectedTileId&&setupChoices.includes(selectedTileId)?selectedTileId:null;
   setText('setupTileHint',selected?`已选 ${selected} · 外圈出生格`:'点击地图上的高亮六角格');
   const presets=setup.resourcePresets||{};
+  const strip=$('setupStrip');
+  if(strip){
+    strip.innerHTML=setupChoices.map((tileId,index)=>`<button class="strip-tile ${selected===tileId?'selected':''}" data-strip-tile="${esc(tileId)}"><span>${index+1}</span><small>${esc(tileId)}</small></button>`).join('');
+    strip.querySelectorAll('[data-strip-tile]').forEach(button=>button.onclick=()=>{selectedTileId=button.dataset.stripTile;renderSetupPanel(publicState,me);renderMap(publicState,me)});
+  }
   $('setupPresets').innerHTML=Object.entries(presets).map(([id,preset])=>`<button class="setup-preset ${setupPreset===id?'selected':''}" data-preset="${esc(id)}"><strong>${esc(preset.label)}</strong><small>${esc(preset.description)}</small></button>`).join('');
   $('setupPresets').querySelectorAll('[data-preset]').forEach(button=>button.onclick=()=>{setupPreset=button.dataset.preset;renderSetupPanel(publicState,me)});
   const already=!!me?.setupReady;
@@ -467,9 +474,10 @@ function renderMap(publicState, player){
     const occupants=publicState.players.filter(item=>item.position===tile.id&&!item.eliminated);
     const building=tile.building;
     const selected=selectedTileId===tile.id?" selected":"";
-    const setupTile=publicState.phase==="setup"&&publicState.setup?.spawnTiles?.includes(tile.id);
+    const setupChoices=publicState.setup?.spawnOptions?.[meId]||publicState.setup?.spawnTiles||[];
+    const setupTile=publicState.phase==="setup"&&setupChoices.includes(tile.id);
     const canStep=reachable.has(tile.id);
-    const icon=building?"⌂":tile.feature==="forge"?"⚒":terrain.icon;
+    const icon=tile.trap?"⚠":building?"⌂":tile.feature==="forge"?"⚒":terrain.icon;
     // 有人站上去时，地形图标缩小移到左上角，把格子中央让给棋子，同时保留地形辨识。
     const iconMarkup=occupants.length
       ? `<text class="hex-icon hex-icon-corner" x="-30" y="-20">${icon}</text>`
@@ -493,7 +501,7 @@ function renderMap(publicState, player){
     const claim=tile.claim;
     const claimColor=claim?playerColor(publicState,claim.playerId):"";
     const claimMarkup=claim?`<polygon class="claim-ring" points="${innerPoints}" fill="none" stroke="${claimColor}" stroke-width="3" stroke-opacity=".92"><title>大金矿占领：${esc(claim.nickname||"")}，剩余 ${claim.roundsLeft} 回合</title></polygon><g class="claim-badge"><rect x="-21" y="-35" width="42" height="17" rx="8.5" fill="#141a19" stroke="${claimColor}" stroke-width="1.8"/><circle cx="-11" cy="-26.5" r="5.4" fill="${claimColor}"/><text class="hex-count pawn-number" x="-11" y="-23.9">${publicState.players.findIndex(item=>item.playerId===claim.playerId)+1}</text><text class="hex-count" x="7" y="-22.4">⛏${claim.roundsLeft}</text></g>`:'';
-    return `<g class="hex-cell${selected}${canStep?" reachable":""}${setupTile?" setup-spawn":""}" data-tile="${esc(tile.id)}" transform="translate(${x} ${y})"><polygon points="${hexPoints}" fill="${terrain.color}" stroke="#3f523d" stroke-width="1.2"/><polygon points="${innerPoints}" fill="none" stroke="#ffeec0" stroke-opacity=".14"/>${canStep?`<polygon points="${innerPoints}" fill="none" stroke="#ffe29a" stroke-width="2.4" stroke-dasharray="6 4" stroke-opacity=".9"/>`:''}${setupTile?`<polygon points="${innerPoints}" fill="none" stroke="#8ff0d0" stroke-width="3" stroke-dasharray="5 4"/>`:''}${iconMarkup}${claimMarkup}${pawns}${tile.resource?'<circle cx="-24" cy="-20" r="5" fill="#f3d88b"/>':''}</g>`;
+    return `<g class="hex-cell${selected}${canStep?" reachable":""}${setupTile?" setup-spawn":""}" data-tile="${esc(tile.id)}" transform="translate(${x} ${y})"><title>${esc(tile.trap?"陷阱 · "+(tile.trap.ownerName||"未知"):terrain.name)}</title><polygon points="${hexPoints}" fill="${terrain.color}" stroke="#3f523d" stroke-width="1.2"/><polygon points="${innerPoints}" fill="none" stroke="#ffeec0" stroke-opacity=".14"/>${canStep?`<polygon points="${innerPoints}" fill="none" stroke="#ffe29a" stroke-width="2.4" stroke-dasharray="6 4" stroke-opacity=".9"/>`:''}${setupTile?`<polygon points="${innerPoints}" fill="none" stroke="#8ff0d0" stroke-width="3" stroke-dasharray="5 4"/>`:''}${iconMarkup}${claimMarkup}${pawns}${tile.resource?'<circle cx="-24" cy="-20" r="5" fill="#f3d88b"/>':''}</g>`;
   }).join('');
   $('board').innerHTML=`<svg class="hex-map" viewBox="0 0 900 900" role="img" aria-label="127 格六角战棋地图"><defs><filter id="mapNoise"><feTurbulence type="fractalNoise" baseFrequency=".045" numOctaves="2" seed="6"/><feColorMatrix values="0 0 0 0 0.12 0 0 0 0 0.14 0 0 0 0 0.09 0 0 0 .17 0"/></filter>${clipDefs.join('')}</defs><rect width="900" height="900" fill="#244d48"/>${cells}<rect width="900" height="900" filter="url(#mapNoise)" pointer-events="none" opacity=".16"/></svg>`;
   $('board').querySelectorAll('[data-tile]').forEach(cell=>cell.onclick=()=>onTileClick(cell.dataset.tile));
@@ -591,9 +599,10 @@ function renderGame(payload){
   $('me').innerHTML=me?`<div class="player"><div class="avatar">${roleImage(me.careerId)}</div><div><b>${esc(me.nickname)}</b><div class="status">${esc(career?.name||'')} · 攻击范围 ${attackRange}</div></div></div><div class="resource-row">${Object.entries(me.resources||{}).map(([key,value])=>`<span class="resource">${resourceLabels[key]||key} <b>${value}</b></span>`).join('')}</div><div class="status">❤ ${me.hp}/${me.maxHp}　★ ${me.score}　行动 ${me.actionsLeft}　${me.movePoints!=null?`可移动 <b>${me.movePoints}</b> 格`:"待掷移动骰"}</div><div class="status">行动牌库 ${payload.private.deckCount} · 装备牌库 ${payload.private.equipmentDeckCount} · 奥秘 ${me.secretCount}</div><div class="status">已装备：${me.equipment?.length?me.equipment.map(card=>esc(card.name)).join('、'):'无'}${me.dog?'、猎狗':''}</div><div class="status">大金矿：${goldMineText}</div><div class="status">天赋：二级 ${talentText(2)}　三级 ${talentText(3)}</div>${career?.passive0?`<div class="status">被动：${esc(career.passive0)}</div>`:''}`:'';
   $('hand').innerHTML=(payload.private.hand||[]).map(card=>{
     const supported=SUPPORTED_CARDS.has(card.name);
-    return `<div><button class="card ${supported?'':'unsupported'}" data-card="${esc(card.uid)}" ${supported&&myTurn?'':'disabled'}><strong>${esc(card.name)}</strong><small>${esc(card.type)} · ${esc(card.cost)}</small><p>${esc(card.effect)}</p>${supported?'':'<small>效果待接入</small>'}</button>${myTurn?`<button class="secondary" data-discard="${esc(card.uid)}" style="margin-top:3px;width:100%">弃置</button>`:''}</div>`;
+    const playable=supported&&myTurn&&!!me?.playActionOpen;
+    return `<div><button class="card ${supported?'':'unsupported'}" data-card="${esc(card.uid)}" ${playable?'':'disabled'}><strong>${esc(card.name)}</strong><small>${esc(card.type)} · ${esc(card.cost)}</small><p>${esc(card.effect)}</p>${supported?(me?.playActionOpen?'':'<small>先进入出牌阶段</small>'):'<small>效果待接入</small>'}</button>${myTurn?`<button class="secondary" data-discard="${esc(card.uid)}" style="margin-top:3px;width:100%">弃置</button>`:''}</div>`;
   }).join('')||'<div class="status">暂无手牌</div>';
-  $('hand').querySelectorAll('[data-card]').forEach(button=>button.onclick=()=>send({type:"playCard",cardUid:button.dataset.card,targetPlayerId:$('targetPlayer')?.value||null,resourceChoice:$('resourceChoice')?.value,quantity:Number($('resourceAmount')?.value)||1}));
+  $('hand').querySelectorAll('[data-card]').forEach(button=>button.onclick=()=>send({type:"playCard",cardUid:button.dataset.card,targetPlayerId:$('targetPlayer')?.value||null,tileId:selectedTileId,resourceChoice:$('resourceChoice')?.value,quantity:Number($('resourceAmount')?.value)||1}));
   $('hand').querySelectorAll('[data-discard]').forEach(button=>button.onclick=()=>send({type:"discard",cardUid:button.dataset.discard}));
   // ---- 指令面板：只切换显示与禁用，不重建控件，避免下拉选择被状态刷新重置 ----
   refreshTargetOptions(publicState);
@@ -628,6 +637,7 @@ function renderGame(payload){
   setCommand('drawExtra',{disabled:drawBlocked||(me?.resources?.meat??0)<1,
     title:(me?.resources?.meat??0)<1?'需要 1 肉':'消耗 1 次行动与 1 肉，抽 2 张职业牌'});
   setCommand('forge',{disabled:drawBlocked,title:'只能在铁匠铺格子上抽取装备牌'});
+  setCommand('openPlayAction',{disabled:!canAct||actions<1||!!me?.playActionOpen,label:me?.playActionOpen?'出牌阶段已开启':'进入出牌阶段',title:me?.playActionOpen?'本回合可以连续打出多张牌':'消耗 1 次基础行动，解锁本回合出牌'});
 
   const forcedRaid=me?.careerId==="merchant"&&me.talent3==="b";
   setCommand('build',{disabled:buildBlocked,
@@ -688,6 +698,7 @@ function turnTodoItems(ctx){
     ? {state:'doing',text:`基础行动还剩 ${actions} 次`,title:'建造 / 抽牌 / 收获 / 抢夺 / 攻击 / 出牌 / 额外移动 / 天赋升级'}
     : {state:'done',text:'基础行动已用完'});
   if(!extraBlocked)items.push({state:'todo',text:'额外移动',action:'extraMove',title:'消耗 1 次行动，再掷一次移动骰'});
+  if(!me?.playActionOpen&&actions>0)items.push({state:'todo',text:'进入出牌阶段',action:'openPlayAction',title:'消耗 1 次基础行动，之后可连续打牌'});
   if(!drawBlocked)items.push({state:'todo',text:'抽牌',action:'draw',title:'消耗 1 次行动抽 1 张职业牌'});
   // 需要选格或选目标的操作只做提示，不给出点了会失败的入口
   items.push(me?.buildsThisTurn?{state:'done',text:'已建造'}
@@ -717,6 +728,7 @@ function dispatchAction(kind){
   if(kind==="drawExtra")return send({type:"draw",extra:true});
   if(kind.startsWith("upgrade"))return send({type:"upgrade",level:Number(kind.slice(-2,-1)),branch:kind.slice(-1)});
   if(kind==="build")return send({type:"build",tileId,buildingType:$('buildingType').value});
+  if(kind==="openPlayAction")return send({type:"openPlayAction"});
   if(["harvest","raid"].includes(kind))return send({type:kind,tileId});
   if(kind==="attack")return send({type:"attack",targetPlayerId:$('targetPlayer')?.value||null,resourceChoice:$('resourceChoice')?.value});
   if(kind==="trial")return trialDialog?trialDialog.showModal():undefined;

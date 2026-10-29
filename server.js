@@ -198,16 +198,16 @@ function spawnTiles(room, count){
 }
 
 const SETUP_PRESETS = {
-  balanced:{label:"均衡起步",description:"木 2 · 石 2 · 肉 2 · 金 1",resources:{wood:2,stone:2,meat:2,gold:1,special:0}},
-  woodland:{label:"林地开拓",description:"木 4 · 石 1 · 肉 2",resources:{wood:4,stone:1,meat:2,gold:0,special:0}},
-  warband:{label:"前线备战",description:"木 1 · 石 2 · 肉 3",resources:{wood:1,stone:2,meat:3,gold:0,special:0}},
-  merchant:{label:"商路先行",description:"木 2 · 石 1 · 肉 1 · 金 2",resources:{wood:2,stone:1,meat:1,gold:2,special:0}}
+  balanced:{label:"均衡起步",description:"木 1 · 石 1 · 肉 2（共 4）",resources:{wood:1,stone:1,meat:2,gold:0,special:0}},
+  woodland:{label:"林地开拓",description:"木 2 · 石 1 · 肉 1（共 4）",resources:{wood:2,stone:1,meat:1,gold:0,special:0}},
+  warband:{label:"前线备战",description:"木 1 · 石 2 · 肉 1（共 4）",resources:{wood:1,stone:2,meat:1,gold:0,special:0}},
+  merchant:{label:"商路先行",description:"木 1 · 石 1 · 肉 2（共 4）",resources:{wood:1,stone:1,meat:2,gold:0,special:0}}
 };
 
 function setupRoom(room, player, action){
   if(room.phase!=="setup")return {ok:false,error:"当前不是开局布置阶段"};
   const tileId=String(action.spawnTileId||player.position||"");
-  const candidateIds=room.setup?.spawnTiles||[];
+  const candidateIds=room.setup?.spawnOptions?.[player.playerId]||room.setup?.spawnTiles||[];
   if(!candidateIds.includes(tileId))return {ok:false,error:"请选择外圈高亮出生格"};
   const occupied=room.players.find(item=>item.playerId!==player.playerId&&!item.eliminated&&item.position===tileId);
   if(occupied)return {ok:false,error:"这个出生格已被其他玩家选择"};
@@ -252,7 +252,14 @@ function startRoom(room){
     player.rerollLeft=player.careerId==="gambler"?1:0; player.moveSpent=false;
     player.setupReady=false; player.setupPreset=null;
   });
-  room.setup={spawnTiles:spawnRing.map(tile=>tile.id),resourcePresets:Object.fromEntries(Object.entries(SETUP_PRESETS).map(([id,preset])=>[id,{label:preset.label,description:preset.description}]))};
+  const ringIds=spawnRing.map(tile=>tile.id);
+  const spawnOptions=Object.fromEntries(room.players.map((player,index)=>{
+    const anchor=spawnRing[index];
+    const choices=room.tiles.filter(tile=>Math.max(Math.abs(tile.q),Math.abs(tile.r),Math.abs(tile.q+tile.r))===6)
+      .sort((a,b)=>Math.hypot(a.q-anchor.q,a.r-anchor.r)-Math.hypot(b.q-anchor.q,b.r-anchor.r));
+    return [player.playerId,[anchor.id,...choices.filter(tile=>tile.id!==anchor.id).slice(0,2).map(tile=>tile.id)]];
+  }));
+  room.setup={spawnTiles:ringIds,spawnOptions,spawnStrips:room.players.map((player,index)=>({playerId:player.playerId,label:`出生板块 ${index+1}`,tiles:spawnOptions[player.playerId]})),resourcePresets:Object.fromEntries(Object.entries(SETUP_PRESETS).map(([id,preset])=>[id,{label:preset.label,description:preset.description}]))};
   room.phase = "setup"; room.currentPlayerId = null; room.round = 1; appendLog(room, "进入开局布置：选择出生格与起步资源"); return {ok:true};
 }
 
