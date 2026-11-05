@@ -7,7 +7,7 @@
   },
   "scripts":{
     "start":"node server.js",
-    "test":"node rules-engine.test.js && node game-client-map.test.js",
+    "test":"node --test rules-engine.test.js game-client-map.test.js card-effects.test.js",
     "smoke":"node smoke-room.js"
   }
 }

@@ -120,12 +120,12 @@ function publicPlayer(player, round){
 }
 
 function publicRoom(room){
-  return {roomCode:room.roomCode, phase:room.phase, hostId:room.hostId, maxPlayers:room.maxPlayers || MAX_PLAYERS, round:room.round, currentPlayerId:room.currentPlayerId, winner:room.winner, setup:room.setup||null, players:room.players.map(player=>publicPlayer(player, room.round)), tiles:room.tiles, discard:room.discard.slice(-20), log:room.log.slice(-40)};
+  const choice=room.choices?.[0];
+  return {roomCode:room.roomCode, phase:room.phase, hostId:room.hostId, maxPlayers:room.maxPlayers || MAX_PLAYERS, round:room.round, currentPlayerId:room.currentPlayerId, winner:room.winner, setup:room.setup||null, players:room.players.map(player=>publicPlayer(player, room.round)), tiles:room.tiles, discard:room.discard.slice(-20), log:room.log.slice(-40),events:room.events||[],pendingChoice:choice?{id:choice.id,playerId:choice.playerId,kind:choice.kind}:null};
 }
 
 function privateRoom(room, playerId){
-  const player = room.players.find(item=>item.playerId === playerId);
-  return {hand:player ? player.hand : [], secrets:player ? player.secrets : [], equipment:player ? player.equipment : [], reconnectToken:player ? player.reconnectToken : null, deckCount:room.decks?.[playerId]?.length||0, equipmentDeckCount:room.equipmentDecks?.[playerId]?.length||0};
+  return require('./game-views').privateRoom(room,playerId);
 }
 
 function emitRoom(room){

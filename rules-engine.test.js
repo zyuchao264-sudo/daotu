@@ -95,6 +95,8 @@ test('陷阱投放与猎狗卡牌要求并使用相应目标',()=>{
   assert.equal(engine.act(room,hunter,{type:'openPlayAction'},[]).ok,true);
   assert.equal(engine.act(room,hunter,{type:'playCard',cardUid:'trap',tileId:trapTile.id},[]).ok,true);
   assert.equal(trapTile.trap.ownerId,hunter.playerId);
+  assert.equal(engine.act(room,hunter,{type:'playCard',cardUid:'rush',targetPlayerId:target.playerId},[]).ok,false);
+  hunter.dogFollowupAvailable=true;
   assert.equal(engine.act(room,hunter,{type:'playCard',cardUid:'rush',targetPlayerId:target.playerId},[]).ok,true);
   assert.equal(target.hp,8,'猎狗基础冲锋伤害为 0');
 });
@@ -202,9 +204,9 @@ test('被替换的装备只洗回装备牌库，不混入行动牌库',()=>{
 });
 
 test('攻击距离按加法叠加',()=>{
-  assert.equal(engine.attackRange({careerId:'gambler'},1),0);
-  assert.equal(engine.attackRange({careerId:'hunter',talent2:'b',aimUntilRound:0},1),1);
-  assert.equal(engine.attackRange({careerId:'hunter',talent2:'b',aimUntilRound:2},1),2);
+  assert.equal(engine.attackRange({careerId:'gambler'},1),1);
+  assert.equal(engine.attackRange({careerId:'hunter',talent2:'b',aimUntilRound:0},1),2);
+  assert.equal(engine.attackRange({careerId:'hunter',talent2:'b',aimUntilRound:2},1),3);
   assert.equal(engine.attackRange({careerId:'merchant',talent2:'b',aimUntilRound:2},1),4);
 });
 

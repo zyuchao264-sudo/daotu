@@ -165,6 +165,10 @@ async function main(){
     assert.equal(state.private.hand.length,4,'首位玩家应有 3 张起始手牌 + 1 张回合抽牌');
     assert.equal(playing[1].private.hand.length,3,'其他玩家应有 3 张起始手牌');
     assert.equal(state.public.currentPlayerId,created.playerId,'房主先行');
+    assert.ok(state.private.hand.every(card=>typeof card.play?.supported==='boolean'),'卡牌实现信息应由服务端统一下发');
+    assert.ok(Array.isArray(state.private.buildOptions),'应下发就地建造选项');
+    assert.ok(state.public.players.every(player=>player.attackRange>=1),'默认攻击范围应覆盖相邻格');
+    assert.ok(state.public.players.every(player=>!('hand' in player)&&!('secrets' in player)),'公共状态不能泄露手牌或预备响应牌');
     console.log('✓ 手牌按玩家隔离，首位玩家先行');
 
     // 大金矿与天赋的下发字段必须到位，否则界面上的占领标记和天赋按钮无从渲染。
@@ -249,6 +253,65 @@ async function main(){
     assert.equal(lobbyState.public.hostId,guest.playerId,'房主应顺延给剩下的玩家');
     console.log('✓ 等待阶段离开释放席位并顺延房主');
 
+    const duelClients=[clients[3],clients[4]];
+    const duelHost=await duelClients[0].emit('createRoom',{nickname:'建造与近战甲',careerId:'hunter',maxPlayers:2});
+    const duelGuest=await duelClients[1].emit('joinRoom',{roomCode:duelHost.roomCode,nickname:'建造与近战乙',careerId:'hunter'});
+    assert.equal(duelHost.ok,true);assert.equal(duelGuest.ok,true);
+    const duelIds=[duelHost.playerId,duelGuest.playerId];
+    assert.equal((await duelClients[0].emit('startRoom',{roomCode:duelHost.roomCode,playerId:duelHost.playerId})).ok,true);
+    const duelSetup=await waitForState(duelClients[0],payload=>payload.public.roomCode===duelHost.roomCode&&payload.public.phase==='setup');
+    for(let index=0;index<2;index++)assert.equal((await duelClients[index].emit('gameAction',{roomCode:duelHost.roomCode,playerId:duelIds[index],action:{type:'setupReady',spawnTileId:duelSetup.public.setup.spawnOptions[duelIds[index]][0],resourcePreset:'balanced'}})).ok,true);
+    await waitForState(duelClients[0],payload=>payload.public.roomCode===duelHost.roomCode&&payload.public.phase==='playing');
+    const duelAction=async(index,action)=>{
+      const previousStates=new Set(duelClients[index].states);
+      const reply=await duelClients[index].emit('gameAction',{roomCode:duelHost.roomCode,playerId:duelIds[index],action});
+      assert.equal(reply.ok,true,`${action.type}: ${reply.error||''}; 玩家 ${index}; 手牌 ${duelClients[index].latest().private.hand.length}; 当前 ${duelClients[index].latest().public.currentPlayerId}; 玩家列表 ${JSON.stringify(duelClients[index].latest().public.players.map(player=>({id:player.playerId,handCount:player.handCount})))}`);
+      return waitForState(duelClients[index],payload=>!previousStates.has(payload)&&payload.public.roomCode===duelHost.roomCode);
+    };
+    const buildOption=duelClients[0].latest().private.buildOptions.find(option=>option.enabled);
+    assert.ok(buildOption,'双人测试出生点应有可建造选项');
+    await duelAction(0,{type:'build',tileId:buildOption.tileId,buildingType:buildOption.buildingType});
+    const built=await waitForState(duelClients[1],payload=>payload.public.roomCode===duelHost.roomCode&&payload.public.tiles.some(tile=>tile.building?.ownerId===duelHost.playerId));
+    assert.equal(built.public.players.find(player=>player.playerId===duelHost.playerId).score,1);
+    console.log('✓ 双客户端建造同步：合法选项、扣费、建筑落地与加分');
+    const safePath=(publicState,fromId,toId)=>{
+      const queue=[[fromId]],seen=new Set([fromId]);
+      while(queue.length){
+        const route=queue.shift(),last=publicState.tiles.find(tile=>tile.id===route.at(-1));
+        if(hexDistance(last,publicState.tiles.find(tile=>tile.id===toId))<=1)return route;
+        for(const next of publicState.tiles.filter(tile=>!seen.has(tile.id)&&!['fire','void','riverGod'].includes(tile.type)&&hexDistance(last,tile)===1)){seen.add(next.id);queue.push([...route,next.id])}
+      }
+      throw new Error('双人对战找不到安全路径');
+    };
+    let attackVerified=false;
+    for(let turn=0;turn<100&&!attackVerified;turn++){
+      const latest=duelClients[0].latest().public,index=duelIds.indexOf(latest.currentPlayerId),client=duelClients[index];
+      let own=client.latest().public.players.find(player=>player.playerId===duelIds[index]);
+      if(!own.moved)await duelAction(index,{type:'rollMove'});
+      for(let step=0;step<4;step++){
+        const current=client.latest().public;own=current.players.find(player=>player.playerId===duelIds[index]);
+        const opponent=current.players.find(player=>player.playerId===duelIds[1-index]);
+        const route=safePath(current,own.position,opponent.position);
+        if(route.length===1){
+          const beforeHp=opponent.hp;
+          await duelAction(index,{type:'attack',targetPlayerId:opponent.playerId});
+          const received=await waitForState(duelClients[1-index],payload=>payload.public.roomCode===duelHost.roomCode&&payload.public.players.some(player=>player.playerId===opponent.playerId&&player.hp===beforeHp-1));
+          const event=received.public.events.at(-1);
+          assert.equal(event.type,'damage');assert.equal(event.amount,1);assert.equal(event.sourceId,own.playerId);assert.equal(event.targetId,opponent.playerId);
+          attackVerified=true;break;
+        }
+        const next=current.tiles.find(tile=>tile.id===route[1]);
+        if((own.movePoints||0)<(TERRAIN_COST[next.type]||1))break;
+        await duelAction(index,{type:'move',tileId:next.id});
+      }
+      if(!attackVerified){
+        while(client.latest().private.hand.length>5)await duelAction(index,{type:'discard',cardUid:client.latest().private.hand.at(-1).uid});
+        const nextState=await duelAction(index,{type:'endTurn'});
+        await waitForState(duelClients[1-index],payload=>payload.public.roomCode===duelHost.roomCode&&payload.public.currentPlayerId===duelIds[1-index]&&payload.public.round===nextState.public.round);
+      }
+    }
+    assert.equal(attackVerified,true,'应能在真实双客户端中接近目标并完成近战');
+    console.log('✓ 双客户端相邻近战：真实移动接敌、扣血与动画事件同步到双方');
     console.log('\n全部联机冒烟检查通过');
     return 0;
   }catch(error){

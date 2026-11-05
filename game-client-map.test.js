@@ -85,7 +85,7 @@ function makeSvg(){
   return svg;
 }
 
-function loadClient(){
+function loadClient(options = {}){
   actionButtons.clear();
   todoButtons.clear();
   const svg = makeSvg();
@@ -93,6 +93,7 @@ function loadClient(){
   board.querySelector = selector => (selector === 'svg' ? svg : null);
   const elements = new Map([['board', board]]);
   const getElement = id => {
+    if(options.missingIds?.includes(id))return null;
     if(!elements.has(id)) elements.set(id, makeElement('div'));
     return elements.get(id);
   };
@@ -126,11 +127,38 @@ function loadClient(){
   };
   sandbox.globalThis = sandbox;
   vm.createContext(sandbox);
-  vm.runInContext(fs.readFileSync(path.join(__dirname,'game-client.js'),'utf8'), sandbox, {filename:'game-client.js'});
+  const source = options.source || fs.readFileSync(path.join(__dirname,'game-client.js'),'utf8');
+  let loadError = null;
+  try {
+    vm.runInContext(source, sandbox, {filename:'game-client.js'});
+  } catch (error) {
+    if (!options.tolerateLoadError) throw error;
+    loadError = error;
+  }
   // game-client.js 自己会包装 send 做“处理中”提示，这里在校验场景下换成记录器。
   sandbox.send = action => sent.push(action);
-  return {sandbox, board, svg, getElement, windowStub, sent, buttonFor: action => actionButtons.get(action), todoFor: action => todoButtons.get(action)};
+  return {sandbox, board, svg, getElement, windowStub, sent, loadError, buttonFor: action => actionButtons.get(action), todoFor: action => todoButtons.get(action)};
 }
+
+test('真实页面缺少 confirmMove ID 时仍能完成初始化与渲染',()=>{
+  const {sandbox,loadError}=loadClient({missingIds:['confirmMove']});
+  assert.equal(loadError,null);
+  assert.doesNotThrow(()=>sandbox.renderGame(gameState()));
+});
+
+test('伤害动画按事件序号去重，群攻和格挡均绘制反馈',()=>{
+  const {sandbox,svg}=loadClient();const layers=[];
+  sandbox.setTimeout=()=>0;
+  sandbox.document.createElementNS=()=>makeElement('g');svg.append=layer=>layers.push(layer);
+  const publicState=gameState().public;
+  sandbox.renderCombatEvents({...publicState,events:[]});
+  const events=[{id:1,type:'damage',targetId:'p1',tileId:'0:0',amount:2,label:'地火'},{id:2,type:'block',targetId:'p1',tileId:'0:0',amount:0,label:'基础攻击'}];
+  sandbox.renderCombatEvents({...publicState,events});
+  assert.equal(layers.length,1);assert.match(layers[0].innerHTML,/−2/);assert.match(layers[0].innerHTML,/格挡/);
+  sandbox.renderCombatEvents({...publicState,events});assert.equal(layers.length,1);
+  sandbox.renderCombatEvents({...publicState,events:[...events,{id:3,type:'heal',targetId:'p1',tileId:'0:0',amount:1,label:'舔舐伤口'}]});
+  assert.equal(layers.length,2);assert.match(layers[1].innerHTML,/\+1/);
+});
 
 const HUNTER_CAREER = {
   id:'hunter', name:'猎人', hp:8, buildingName:'猎人公会',
@@ -299,6 +327,43 @@ test('本回合待办提醒', async t => {
     assert.match(todo(), /手牌效果均未接入/);
     assert.ok(todo().includes('data-todo="rollMove"'), '其他待办不受影响');
   });
+});
+
+// 事故回归：曾经因为顶层初始化抛错，导致后面的 const 未初始化，
+// renderMap 在第一个棋子处就抛 ReferenceError，于是地图与三个面板全空（而抛错前设置的内容还在）。
+test('顶层初始化失败也不能让地图与面板留白', () => {
+  const original = fs.readFileSync(path.join(__dirname, 'game-client.js'), 'utf8');
+  const boom = original.replace('\nbuildCommandPanel();', '\nthrow new Error("bootstrap boom");\nbuildCommandPanel();');
+  assert.notEqual(boom, original, '应能构造出初始化失败的版本');
+
+  const {sandbox, getElement, loadError} = loadClient({ source: boom, tolerateLoadError: true });
+  assert.ok(loadError, '该版本应在加载阶段抛错');
+  assert.match(loadError.message, /bootstrap boom/);
+
+  sandbox.careers = [HUNTER_CAREER];
+  assert.doesNotThrow(() => sandbox.renderGame(gameState({private:{hand:[{uid:'a',name:'狩猎',type:'行动卡'}], deckCount:9, equipmentDeckCount:2}})),
+    '初始化失败后 renderGame 仍应正常完成');
+
+  const board = getElement('board').innerHTML;
+  assert.ok(board.includes('hex-cell'), '地图必须照常渲染');
+  assert.equal((board.match(/class="hex-cell/g) || []).length, 127, '127 格都要在');
+  assert.ok(getElement('me').innerHTML.length > 0, '我的状态仍应渲染');
+  assert.ok(getElement('hand').innerHTML.length > 0, '手牌仍应渲染');
+  assert.ok(getElement('todoRow').innerHTML.length > 0, '本回合待办仍应渲染');
+  assert.ok(getElement('players').innerHTML.length > 0, '远征队仍应渲染');
+});
+
+// 静态约束：会渲染的函数用到的顶层数据，必须声明在任何顶层调用之前，避免再次踩到暂时性死区。
+test('顶层数据声明必须早于顶层初始化调用', () => {
+  const source = fs.readFileSync(path.join(__dirname, 'game-client.js'), 'utf8');
+  const lines = source.split('\n');
+  const firstCallLine = lines.findIndex(line => line.trim() === 'buildCommandPanel();');
+  assert.ok(firstCallLine > 0, '应能找到 buildCommandPanel() 调用');
+  for (const name of ['PLAYER_COLORS', 'commandButtons', 'TERRAIN', 'SUPPORTED_CARDS', 'MAP_PADDING', 'MAP_FIT']) {
+    const declaration = lines.findIndex(line => new RegExp(`^(const|let)\\s+${name}\\b`).test(line.trim()));
+    assert.ok(declaration >= 0, `${name} 应有顶层声明`);
+    assert.ok(declaration < firstCallLine, `${name} 必须声明在 buildCommandPanel() 之前（实际 ${declaration + 1} vs ${firstCallLine + 1}）`);
+  }
 });
 
 function viewBoxOf(svg){
