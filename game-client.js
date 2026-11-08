@@ -148,6 +148,7 @@ function buildCommandPanel(){
     <button class="cmd-btn cmd-danger" data-action="endGame" hidden>结束对局</button>
   </div>
 </div>
+<section class="game-over-panel" id="gameOverPanel" hidden aria-live="polite"></section>
 <div class="cmd-notice" id="cmdNoticeHost"></div>`;
   $('setupConfirm').onclick=()=>send({type:"setupReady",spawnTileId:selectedTileId,resourcePreset:setupPreset});
   for(const button of $('actionbar').querySelectorAll('[data-action]')){
@@ -513,7 +514,8 @@ function renderMap(publicState, player){
     const claim=tile.claim;
     const claimColor=claim?playerColor(publicState,claim.playerId):"";
     const claimMarkup=claim?`<polygon class="claim-ring" points="${innerPoints}" fill="none" stroke="${claimColor}" stroke-width="3" stroke-opacity=".92"><title>大金矿占领：${esc(claim.nickname||"")}，剩余 ${claim.roundsLeft} 回合</title></polygon><g class="claim-badge"><rect x="-21" y="-35" width="42" height="17" rx="8.5" fill="#141a19" stroke="${claimColor}" stroke-width="1.8"/><circle cx="-11" cy="-26.5" r="5.4" fill="${claimColor}"/><text class="hex-count pawn-number" x="-11" y="-23.9">${publicState.players.findIndex(item=>item.playerId===claim.playerId)+1}</text><text class="hex-count" x="7" y="-22.4">⛏${claim.roundsLeft}</text></g>`:'';
-    return `<g class="hex-cell${selected}${canStep?" reachable":""}${setupTile?" setup-spawn":""}" data-tile="${esc(tile.id)}" transform="translate(${x} ${y})"><title>${esc(tile.trap?"陷阱 · "+(tile.trap.ownerName||"未知"):terrain.name)}</title><polygon points="${hexPoints}" fill="${terrain.color}" stroke="#3f523d" stroke-width="1.2"/><polygon points="${innerPoints}" fill="none" stroke="#ffeec0" stroke-opacity=".14"/>${canStep?`<polygon points="${innerPoints}" fill="none" stroke="#ffe29a" stroke-width="2.4" stroke-dasharray="6 4" stroke-opacity=".9"/>`:''}${setupTile?`<polygon points="${innerPoints}" fill="none" stroke="#8ff0d0" stroke-width="3" stroke-dasharray="5 4"/>`:''}${iconMarkup}${claimMarkup}${pawns}${tile.resource?'<circle cx="-24" cy="-20" r="5" fill="#f3d88b"/>':''}</g>`;
+    const resourceNames={wood:'木',stone:'石',meat:'肉'};
+    return `<g class="hex-cell${selected}${canStep?" reachable":""}${setupTile?" setup-spawn":""}${tile.resource?" has-resource":""}" data-tile="${esc(tile.id)}" transform="translate(${x} ${y})"><title>${esc(tile.trap?"陷阱 · "+(tile.trap.ownerName||"未知"):terrain.name)}${tile.resource?` · 资源：${resourceNames[tile.resource.type]||tile.resource.type} 1（结束回合领取）`:''}</title><polygon points="${hexPoints}" fill="${terrain.color}" stroke="#3f523d" stroke-width="1.2"/><polygon points="${innerPoints}" fill="none" stroke="#ffeec0" stroke-opacity=".14"/>${canStep?`<polygon points="${innerPoints}" fill="none" stroke="#ffe29a" stroke-width="2.4" stroke-dasharray="6 4" stroke-opacity=".9"/>`:''}${setupTile?`<polygon points="${innerPoints}" fill="none" stroke="#8ff0d0" stroke-width="3" stroke-dasharray="5 4"/>`:''}${iconMarkup}${claimMarkup}${pawns}${tile.resource?'<circle class="resource-token" cx="-24" cy="-20" r="5"/><text class="hex-count" x="-24" y="-17" fill="#3b2b17">1</text>':''}</g>`;
   }).join('');
   $('board').innerHTML=`<svg class="hex-map" viewBox="0 0 900 900" role="img" aria-label="127 格六角战棋地图"><defs><filter id="mapNoise"><feTurbulence type="fractalNoise" baseFrequency=".045" numOctaves="2" seed="6"/><feColorMatrix values="0 0 0 0 0.12 0 0 0 0 0.14 0 0 0 0 0.09 0 0 0 .17 0"/></filter>${clipDefs.join('')}</defs><rect width="900" height="900" fill="#244d48"/>${cells}<rect width="900" height="900" filter="url(#mapNoise)" pointer-events="none" opacity=".16"/></svg>`;
   if(effects.length)$('board').querySelector('svg')?.append(...effects);
@@ -627,10 +629,14 @@ function renderGame(payload){
   // 先把各项的可用性算成具名条件，按钮与本回合待办共用同一份判断，避免两处逻辑走偏。
   const rollBlocked=!canAct||!!me?.moved||me?.movePoints!=null;
   const extraBlocked=!canAct||actions<1||me?.movePoints!=null;
-  const drawBlocked=!canAct||actions<1;
+  const drawEmpty=(payload.private.deckCount??0)<=0&&(payload.private.discardCount??0)<=0;
+  const equipmentDrawEmpty=(payload.private.equipmentDeckCount??0)<=0&&(payload.private.equipmentDiscardCount??0)<=0;
+  const drawBlocked=!canAct||actions<1||drawEmpty;
   const buildBlocked=!canAct||actions<1||!!me?.buildsThisTurn;
   const raidBlocked=!canAct||actions<1||!!me?.raidsThisTurn;
-  const harvestBlocked=!canAct||actions<1;
+  const selectedTile=publicState.tiles.find(tile=>tile.id===selectedTileId);
+  const harvestTarget=!!selectedTile?.building&&selectedTile.building.ownerId===me?.playerId&&hexDistance(selectedTile.id,me?.position)<=2;
+  const harvestBlocked=!canAct||actions<1||!harvestTarget;
 
   setCommand('rollMove',{disabled:rollBlocked,
     title:!canAct?'等待你的回合':me?.moved?'本回合已经掷过移动骰':'掷出 1~3 点，点数就是本回合可移动格数'});
@@ -643,21 +649,26 @@ function renderGame(payload){
   setCommand('extraMove',{disabled:extraBlocked,
     title:actions<1?'行动次数不足':me?.movePoints!=null?'请先用完当前可移动的格数':'消耗 1 次行动，再掷一次移动骰'});
 
-  setCommand('draw',{disabled:drawBlocked,title:actions<1?'行动次数不足':'消耗 1 次行动，抽 1 张职业牌'});
+  setCommand('draw',{disabled:drawBlocked,title:drawEmpty?'行动牌库与弃牌堆均为空':actions<1?'行动次数不足':'消耗 1 次行动，抽 1 张职业牌'});
   setCommand('whistle',{disabled:drawBlocked||!me?.dog||!me?.equipment?.some(card=>card.name==='哨子'),title:'需要猎狗与哨子，从牌库或弃牌堆获得指定牌'});
   setCommand('drawExtra',{disabled:drawBlocked||(me?.resources?.meat??0)<1,
-    title:(me?.resources?.meat??0)<1?'需要 1 肉':'消耗 1 次行动与 1 肉，抽 2 张职业牌'});
-  setCommand('forge',{disabled:drawBlocked,title:'只能在铁匠铺格子上抽取装备牌'});
+    title:drawEmpty?'行动牌库与弃牌堆均为空':(me?.resources?.meat??0)<1?'需要 1 肉':'消耗 1 次行动与 1 肉，抽 2 张职业牌'});
+  const onForge=publicState.tiles.some(tile=>tile.id===me?.position&&tile.feature==='forge');
+  setCommand('forge',{disabled:!canAct||actions<1||!onForge||equipmentDrawEmpty,title:!onForge?'只能在铁匠铺格子上抽取装备':equipmentDrawEmpty?'装备牌库与弃牌堆均为空':'在铁匠铺抽取装备'});
   setCommand('openPlayAction',{disabled:!canAct||actions<1||!!me?.playActionOpen,label:me?.playActionOpen?'出牌阶段已开启':'进入出牌阶段',title:me?.playActionOpen?'本回合可以连续打出多张牌':'消耗 1 次基础行动，解锁本回合出牌'});
 
   const forcedRaid=me?.careerId==="merchant"&&me.talent3==="b";
+  const raidTarget=!!selectedTile?.building&&selectedTile.building.ownerId!==me?.playerId&&hexDistance(selectedTile.id,me?.position)<=(forcedRaid?3:0);
+  const raidResource=!forcedRaid||(me?.resources?.special??0)>=2;
   setCommand('build',{disabled:buildBlocked,
     title:me?.buildsThisTurn?'每回合只能建造一次':actions<1?'行动次数不足':'在选中的格子上建造（消耗 1 次行动）'});
   renderBuildChoices(payload,canAct);
-  setCommand('harvest',{disabled:harvestBlocked,title:'收获两格内自己建筑的产出（消耗 1 次行动）'});
-  setCommand('raid',{disabled:raidBlocked,label:forcedRaid?"强制征税选中格":"抢夺选中格",
-    title:me?.raidsThisTurn?'每回合只能抢夺一次':forcedRaid?'消耗 1 次行动与 2 铜币，对 3 格内的敌方建筑强制抢夺':'对同格的敌方建筑抢夺（消耗 1 次行动）'});
-  setCommand('spring',{disabled:harvestBlocked,title:'只能在泉水格子上回复生命'});
+  setCommand('harvest',{disabled:harvestBlocked||!harvestTarget,
+    title:!harvestTarget?'请选择两格内自己拥有建筑的地块':actions<1?'行动次数不足':'收获选中建筑的产出（消耗 1 次行动）'});
+  setCommand('raid',{disabled:raidBlocked||!raidTarget||!raidResource,label:forcedRaid?"强制征税选中格":"抢夺选中格",
+    title:!raidTarget?(forcedRaid?'请选择 3 格内敌方建筑':'请选择同格敌方建筑'):!raidResource?'强制征税需要 2 铜币':me?.raidsThisTurn?'每回合只能抢夺一次':forcedRaid?'消耗 1 次行动与 2 铜币，对 3 格内的敌方建筑强制抢夺':'对同格的敌方建筑抢夺（消耗 1 次行动）'});
+  const onSpring=publicState.tiles.some(tile=>tile.id===me?.position&&tile.type==='spring');
+  setCommand('spring',{disabled:!canAct||actions<1||!onSpring||me?.hp>=me?.maxHp,title:!onSpring?'只能在泉水格子上回复生命':me?.hp>=me?.maxHp?'生命值已满':'在泉水回复 1 点生命'});
   // 攻击也走同一个“目标玩家”下拉，避免操作入口散落在两处
   const targetPlayer=publicState.players.find(player=>player.playerId===$('targetPlayer')?.value&&!player.eliminated);
   const targetInRange=!!targetPlayer&&hexDistance(targetPlayer.position,me?.position)<=attackRange;
@@ -679,6 +690,7 @@ function renderGame(payload){
     buildBlocked,raidBlocked,harvestBlocked,attackBlocked,targetPlayer,trialBlocked,talentOpen,attackRange,
     playableCards:(payload.private.hand||[]).filter(card=>card.play?.supported??SUPPORTED_CARDS.has(card.name)).length,
     totalCards:(payload.private.hand||[]).length}));
+  renderGameOver(publicState,playing);
   if(!playing)notice('gameNotice','本局已结束，地图与记录保留供查看。');
   renderChoice(payload);
 }
@@ -843,7 +855,7 @@ function renderChoice(payload){
 }
 function attackAction(targetPlayerId){return {type:'attack',targetPlayerId,resourceChoice:$('resourceChoice')?.value,loadCrossbow:!!$('loadCrossbow')?.checked,useGuard:!!$('useGuard')?.checked}}
 function dispatchAction(kind){
-  const tileId=selectedTileId;
+  const tileId=selectedTileId||state?.public?.players.find(player=>player.playerId===meId)?.position;
   if(kind==="drawExtra")return send({type:"draw",extra:true});
   if(kind.startsWith("upgrade"))return send({type:"upgrade",level:Number(kind.slice(-2,-1)),branch:kind.slice(-1)});
   if(kind==="build")return $('buildChoices')?.scrollIntoView?.({block:'nearest',behavior:'smooth'});
@@ -855,6 +867,18 @@ function dispatchAction(kind){
   if(kind==="trial")return trialDialog?trialDialog.showModal():undefined;
   if(kind==="endGame"&&!confirm("确定手动结束这场对局吗？当前对局进度将不再继续。"))return;
   send({type:kind,useKeptDie:!!$('useKeptDie')?.checked});
+}
+function renderGameOver(publicState,playing){
+  const panel=$('gameOverPanel');
+  if(!panel)return;
+  panel.hidden=playing;
+  if(playing)return;
+  const winner=publicState.winner;
+  const title=winner?.type==='manual'?'对局已结束':winner?.nickname?`${winner.nickname} 获胜`:'对局结束';
+  const reason=winner?.type==='score'?'完成生存试炼':winner?.type==='war'?'其他玩家已全部淘汰':winner?.type==='manual'?'房主结束了对局':'本局没有胜者';
+  panel.innerHTML=`<div><span class="game-over-kicker">DAOTU · GAME OVER</span><h2>${esc(title)}</h2><p>${esc(reason)}。你可以查看地图与行动记录，或返回首页开始新对局。</p></div><button class="cmd-btn cmd-primary" data-return-home>返回首页</button>`;
+  const returnButton=panel.querySelector?.('[data-return-home]');
+  if(returnButton)returnButton.onclick=()=>{localStorage.removeItem('daotu.playerId');localStorage.removeItem('daotu.roomCode');localStorage.removeItem('daotu.reconnectToken');location.reload()};
 }
 // 这两个句柄已在文件顶部声明为 let，这里只赋值：即使此处失败，也不会让后面调用它们的函数踩到死区。
 boardHint=document.createElement("div");boardHint.id="boardHint";boardHint.className="tile-tooltip";

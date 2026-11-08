@@ -28,6 +28,22 @@ test('map contains 127 unique, connected hexes',()=>{
   assert.ok(tiles.every(tile=>engine.distance(tile,{q:0,r:0})<=6));
 });
 
+test('内环资源随机生成且只在结束回合时领取',()=>{
+  const tiles=engine.createTiles();
+  const resources=tiles.filter(tile=>tile.resource);
+  assert.ok(resources.length>0);
+  assert.ok(resources.every(tile=>engine.distance(tile,{q:0,r:0})<=4&&tile.resource.amount===1));
+  const {room,player}=roomWithPlayer();
+  const resourceTile=resources[0];
+  const before=player.resources[resourceTile.resource.type];
+  const localTile=room.tiles.find(tile=>tile.id===resourceTile.id);
+  localTile.resource={...resourceTile.resource};
+  player.position=localTile.id;
+  assert.equal(engine.act(room,player,{type:'endTurn'},[]).ok,true);
+  assert.equal(player.resources[localTile.resource?.type||resourceTile.resource.type],before+1);
+  assert.equal(localTile.resource,null);
+});
+
 test('players draw only from their own action deck',()=>{
   const players=[{playerId:'a',careerId:'hunter',hand:[]},{playerId:'b',careerId:'merchant',hand:[]}];
   const cards=[{uid:'h',career:'hunter',name:'狩猎',effect:'获得肉',type:'行动卡',count:2},{uid:'m',career:'merchant',name:'交易',effect:'交换',type:'行动卡',count:2},{uid:'e',career:'hunter',name:'短弓',effect:'装备',type:'武器',count:1}];

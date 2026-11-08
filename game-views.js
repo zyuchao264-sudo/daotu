@@ -18,6 +18,7 @@ function privateRoom(room,playerId){
     hand:player?player.hand.map(card=>({...card,play:{...engine.cardMetadata(card),freeWindow:card.name==='冲吧！猎狗'&&!!player.dogFollowupAvailable},locked:engine.activeUntil(room,card.lock)})):[],
     secrets:player?.secrets||[],equipment:player?.equipment||[],reconnectToken:player?.reconnectToken||null,
     deckCount:room.decks?.[playerId]?.length||0,equipmentDeckCount:room.equipmentDecks?.[playerId]?.length||0,
+    discardCount:player?.discard?.length||0,equipmentDiscardCount:player?.equipmentDiscard?.length||0,
     buildOptions:player?engine.buildOptions(room,player):[],choice,insights
   };
 }

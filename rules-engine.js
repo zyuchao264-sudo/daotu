@@ -36,8 +36,19 @@ function createTiles(){
   for(const [type,count,q,r] of TERRAIN_LAYOUT) assign(main,type,count,{q,r});
   const outer=tiles.filter(tile=>distance(tile,center)>4);
   for(const [type,count,q,r] of [["forest",9,-5,-1],["hill",9,5,-3],["desert",4,-4,5],["void",2,4,2],["spring",1,0,-6]]) assign(outer,type,count,{q,r});
-  for(const tile of main){
-    if(tile.type==="plain"&&Math.abs(tile.q+tile.r)%5===0) tile.resource={type:["wood","stone","meat"][Math.abs(tile.q*3+tile.r)%3],amount:1};
+  // 内环（距中心 4 格以内）随机放置基础资源。资源不会在进入时自动领取，
+  // 只有在该格结束自己的回合时才会收取，避免移动阶段误触发结算。
+  const resourceTiles=main.filter(tile=>distance(tile,{q:0,r:0})<=4&&!['void','fire','riverGod','goldMine','trial'].includes(tile.type));
+  let spawned=0;
+  for(const tile of resourceTiles){
+    if(Math.random()<0.35){
+      tile.resource={type:["wood","stone","meat"][Math.floor(Math.random()*3)],amount:1};
+      spawned++;
+    }
+  }
+  if(!spawned&&resourceTiles.length){
+    const tile=resourceTiles[Math.floor(Math.random()*resourceTiles.length)];
+    tile.resource={type:["wood","stone","meat"][Math.floor(Math.random()*3)],amount:1};
   }
   for(const focus of [{q:-1,r:-2},{q:2,r:-1}]){
     const tile=main.filter(item=>item.type==="plain"&&!item.feature).sort((first,second)=>distance(first,focus)-distance(second,focus))[0];
@@ -236,6 +247,7 @@ function endTurn(room,player){
     player.weakShield=0;player.weakShieldHit=false;
     if(player.dripHealRound===room.round)player.hp=Math.min(player.maxHp,player.hp+3);
     if(player.blessing&&findTile(room,player.position)?.type==="river")player.score+=3;
+    collectTileResource(room,player);
     collectGoldMine(room,player);
     for(const owner of room.players)if(owner.hunterMarks?.[player.playerId]>0)owner.hunterMarks[player.playerId]--;
     for(const debt of (player.borrowed||[]).filter(item=>item.untilTurn<=(player.turnsStarted||0))){
@@ -257,8 +269,17 @@ function endTurn(room,player){
   return {ok:true};
 }
 
+function collectTileResource(room,player){
+  const tile=findTile(room,player.position);
+  if(!tile?.resource)return false;
+  const resource=tile.resource;
+  gain(player,resource.type,resource.amount);
+  tile.resource=null;
+  log(room,`${player.nickname} 在回合结束时收取了 ${resource.amount} ${RESOURCE_NAMES[resource.type]}`);
+  return true;
+}
+
 function resolveTerrain(room,player,tile){
-  if(tile.resource&&player.careerId!=="android"){gain(player,tile.resource.type,tile.resource.amount);log(room,`${player.nickname} 拾取了 ${tile.resource.amount} ${RESOURCE_NAMES[tile.resource.type]}`);tile.resource=null}
   if(tile.type==="goldMine")claimGoldMine(room,player,tile);
   if(tile.type==="holySpring"&&room.holySpringUses<2){room.holySpringUses++;player.hp=player.maxHp;log(room,`${player.nickname} 在圣泉恢复了生命`);if(room.holySpringUses===2)tile.type="spring"}
   if(tile.type==="void"){
