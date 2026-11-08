@@ -204,29 +204,6 @@ const SETUP_PRESETS = {
   merchant:{label:"商路先行",description:"木 1 · 石 1 · 肉 2（共 4）",resources:{wood:1,stone:1,meat:2,gold:0,special:0}}
 };
 
-function setupRoom(room, player, action){
-  if(room.phase!=="setup")return {ok:false,error:"当前不是开局布置阶段"};
-  const tileId=String(action.spawnTileId||player.position||"");
-  const candidateIds=room.setup?.spawnOptions?.[player.playerId]||room.setup?.spawnTiles||[];
-  if(!candidateIds.includes(tileId))return {ok:false,error:"请选择外圈高亮出生格"};
-  const occupied=room.players.find(item=>item.playerId!==player.playerId&&!item.eliminated&&item.position===tileId);
-  if(occupied)return {ok:false,error:"这个出生格已被其他玩家选择"};
-  const preset=SETUP_PRESETS[action.resourcePreset]||SETUP_PRESETS.balanced;
-  player.position=tileId;
-  player.resources={...preset.resources};
-  player.setupPreset=action.resourcePreset in SETUP_PRESETS?action.resourcePreset:"balanced";
-  player.setupReady=true;
-  log(room,`${player.nickname} 完成开局布置：${preset.label}`);
-  if(room.players.every(item=>item.setupReady)){
-    room.phase="playing";
-    room.currentPlayerId=room.players[0].playerId;
-    room.round=1;
-    rulesEngine.draw(room,room.players[0]);
-    log(room,"所有玩家完成布置，首位玩家开始第一回合");
-  }
-  return {ok:true};
-}
-
 function startRoom(room){
   if(room.phase!=="lobby") return {ok:false,error:"对局已经开始或结束"};
   const targetPlayers = room.maxPlayers || MAX_PLAYERS;

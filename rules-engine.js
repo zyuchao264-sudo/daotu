@@ -36,9 +36,7 @@ function createTiles(){
   for(const [type,count,q,r] of TERRAIN_LAYOUT) assign(main,type,count,{q,r});
   const outer=tiles.filter(tile=>distance(tile,center)>4);
   for(const [type,count,q,r] of [["forest",9,-5,-1],["hill",9,5,-3],["desert",4,-4,5],["void",2,4,2],["spring",1,0,-6]]) assign(outer,type,count,{q,r});
-  // 内环（距中心 4 格以内）随机放置基础资源。资源不会在进入时自动领取，
-  // 只有在该格结束自己的回合时才会收取，避免移动阶段误触发结算。
-  const resourceTiles=main.filter(tile=>distance(tile,{q:0,r:0})<=4&&!['void','fire','riverGod','goldMine','trial'].includes(tile.type));
+  const resourceTiles=tiles.filter(tile=>!['void','fire','riverGod','goldMine','trial'].includes(tile.type));
   let spawned=0;
   for(const tile of resourceTiles){
     if(Math.random()<0.35){
@@ -49,6 +47,10 @@ function createTiles(){
   if(!spawned&&resourceTiles.length){
     const tile=resourceTiles[Math.floor(Math.random()*resourceTiles.length)];
     tile.resource={type:["wood","stone","meat"][Math.floor(Math.random()*3)],amount:1};
+  }
+  for(const anchor of tiles.filter(tile=>distance(tile,center)===6)){
+    const nearby=resourceTiles.filter(tile=>distance(tile,anchor)===1);
+    if(nearby.length&&!nearby.some(tile=>tile.resource))nearby[0].resource={type:anchor.type==='forest'?'wood':anchor.type==='hill'?'stone':'meat',amount:1};
   }
   for(const focus of [{q:-1,r:-2},{q:2,r:-1}]){
     const tile=main.filter(item=>item.type==="plain"&&!item.feature).sort((first,second)=>distance(first,focus)-distance(second,focus))[0];
@@ -247,7 +249,6 @@ function endTurn(room,player){
     player.weakShield=0;player.weakShieldHit=false;
     if(player.dripHealRound===room.round)player.hp=Math.min(player.maxHp,player.hp+3);
     if(player.blessing&&findTile(room,player.position)?.type==="river")player.score+=3;
-    collectTileResource(room,player);
     collectGoldMine(room,player);
     for(const owner of room.players)if(owner.hunterMarks?.[player.playerId]>0)owner.hunterMarks[player.playerId]--;
     for(const debt of (player.borrowed||[]).filter(item=>item.untilTurn<=(player.turnsStarted||0))){
@@ -275,11 +276,12 @@ function collectTileResource(room,player){
   const resource=tile.resource;
   gain(player,resource.type,resource.amount);
   tile.resource=null;
-  log(room,`${player.nickname} 在回合结束时收取了 ${resource.amount} ${RESOURCE_NAMES[resource.type]}`);
+  log(room,`${player.nickname} 经过地块拾取了 ${resource.amount} ${RESOURCE_NAMES[resource.type]}（一次性）`);
   return true;
 }
 
 function resolveTerrain(room,player,tile){
+  collectTileResource(room,player);
   if(tile.type==="goldMine")claimGoldMine(room,player,tile);
   if(tile.type==="holySpring"&&room.holySpringUses<2){room.holySpringUses++;player.hp=player.maxHp;log(room,`${player.nickname} 在圣泉恢复了生命`);if(room.holySpringUses===2)tile.type="spring"}
   if(tile.type==="void"){
@@ -728,6 +730,7 @@ function actInternal(room,player,action,careers){
   }
   if(room.phase==="setup"){
     if(action.type!=="setupReady")return fail("请先完成开局布置");
+    if(player.setupReady)return fail("已确认开局布置，无法再次修改");
     const tileId=String(action.spawnTileId||"");
     const candidateIds=room.setup?.spawnOptions?.[player.playerId]||room.setup?.spawnTiles||[];
     if(!candidateIds.includes(tileId))return fail("请选择外圈高亮出生格");
@@ -736,7 +739,8 @@ function actInternal(room,player,action,careers){
     const presets=room.setup?.resourcePresets||{};
     const presetId=presets[action.resourcePreset]?action.resourcePreset:"balanced";
     const presetResources={balanced:{wood:1,stone:1,meat:2,gold:0,special:0},woodland:{wood:2,stone:1,meat:1,gold:0,special:0},warband:{wood:1,stone:2,meat:1,gold:0,special:0},merchant:{wood:1,stone:1,meat:2,gold:0,special:0}}[presetId];
-    player.position=tileId;player.resources={...presetResources};player.setupPreset=presetId;player.setupReady=true;
+    if(action.resources!==undefined&&!validAllocation(action.resources,4))return fail("开局资源须为非负整数，木、石、肉、金合计恰好 4");
+    player.position=tileId;player.resources=action.resources!==undefined?{wood:0,stone:0,meat:0,gold:0,...action.resources,special:0}:{...presetResources};player.setupPreset=action.resources!==undefined?'custom':presetId;player.setupReady=true;
     log(room,`${player.nickname} 完成开局布置`);
     if(room.players.every(item=>item.setupReady)){
       room.phase="playing";room.currentPlayerId=room.players[0].playerId;room.round=1;draw(room,room.players[0]);log(room,"所有玩家完成布置，首位玩家开始第一回合");

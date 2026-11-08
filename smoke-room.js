@@ -145,7 +145,12 @@ async function main(){
     console.log('✓ 进入开局布置阶段，出生格与资源方案已下发');
     for(let index=0;index<clients.length;index++){
       const player = setupStates[index].public.players.find(item=>item.playerId===(index===0?created.playerId:joinReplies[index-1].playerId));
-      const reply = await clients[index].emit('gameAction',{roomCode,playerId:player.playerId,action:{type:'setupReady',spawnTileId:setup.spawnTiles[index],resourcePreset:index%2?'woodland':'balanced'}});
+      const resources=index%2?{wood:0,stone:4,meat:0,gold:0}:{wood:1,stone:2,meat:0,gold:1};
+      if(index===0){
+        const invalid=await clients[index].emit('gameAction',{roomCode,playerId:player.playerId,action:{type:'setupReady',spawnTileId:setup.spawnTiles[index],resources:{stone:5}}});
+        assert.equal(invalid.ok,false,'服务端应拒绝超额开局资源');
+      }
+      const reply = await clients[index].emit('gameAction',{roomCode,playerId:player.playerId,action:{type:'setupReady',spawnTileId:setup.spawnTiles[index],resources}});
       assert.equal(reply.ok,true,reply.error);
     }
     const playing = await Promise.all(clients.map(client=>waitForState(client,state=>state.public.phase==='playing')));
@@ -160,6 +165,7 @@ async function main(){
     assert.ok(!spawns.includes('0:0'),'出生点不能落在中心生存试炼板块');
     assert.ok(state.public.players.every(player=>player.hp>0&&player.hp===player.maxHp),'开局应满血');
     assert.ok(state.public.players.every(player=>Object.values(player.resources||{}).some(value=>value>0)),'开局资源应已发放');
+    state.public.players.forEach((player,index)=>assert.deepEqual(player.resources,index%2?{wood:0,stone:4,meat:0,gold:0,special:0}:{wood:1,stone:2,meat:0,gold:1,special:0},'自选分配应同步到所有客户端'));
     console.log(`✓ 出生点互不重叠且避开中心：${spawns.join(' ')}`);
 
     assert.equal(state.private.hand.length,4,'首位玩家应有 3 张起始手牌 + 1 张回合抽牌');

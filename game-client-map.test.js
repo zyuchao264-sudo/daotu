@@ -517,12 +517,13 @@ test('地图棋子与占领标记', async t => {
   const {sandbox, board, getElement} = loadClient();
   const state = publicState();
 
-  await t.test('单人时棋子居中，地形图标移到左上角', () => {
+  await t.test('单人时棋子居中，地形插画淡化以保持棋子清晰', () => {
     sandbox.renderMap(state, state.players[0]);
     const html = board.innerHTML;
     assert.ok(html.includes('<circle cx="0" cy="0" r="18"'), '棋子应画在格子中心');
     assert.ok(html.includes('href="/assets/avatars/hunter.png"'), '棋子应使用角色头像');
-    assert.equal((html.match(/hex-icon-corner/g) || []).length, 1, '有人站上去时地形图标应移到角落');
+    assert.ok(html.includes('height="62" opacity=".55"'), '有人站上去时地形插画应淡化');
+    assert.equal((html.match(/class="terrain-art"/g) || []).length, 127);
     assert.equal((html.match(/data-map-player=/g) || []).length, 1);
     assert.equal((html.match(/claim-badge/g) || []).length, 0, '未占领时不应有标记');
   });
@@ -534,7 +535,7 @@ test('地图棋子与占领标记', async t => {
     assert.equal((html.match(/data-map-player=/g) || []).length, 2, '两名玩家都要显示');
     assert.equal((html.match(/r="12\.5"/g) || []).length, 2, '多人时棋子应缩小');
     assert.ok(html.includes('cx="-12.625"') && html.includes('cx="12.625"'), '两人应左右对称排布');
-    assert.equal((html.match(/hex-icon-corner/g) || []).length, 1);
+    assert.ok(html.includes('height="62" opacity=".55"'));
   });
 
   await t.test('大金矿被占领时显示占领者与剩余回合', () => {

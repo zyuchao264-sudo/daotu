@@ -48,7 +48,8 @@ let mapToolbar=null;
 const commandButtons={};
 let selectedTileId = null;
 let selectedPlayerId = null;
-let setupPreset = "balanced";
+let setupAllocation = {wood:1,stone:2,meat:1,gold:0};
+let setupPanelPlaced = false;
 let lastEventId = null;
 let eventRoomCode = null;
 let activeCardUid = null;
@@ -76,7 +77,7 @@ function buildCommandPanel(){
   $('actionbar').innerHTML=`<section class="setup-panel" id="setupPanel" hidden>
   <div class="setup-kicker">DAOTU / SETUP PHASE</div>
   <div class="setup-heading"><div><h3>开局布置</h3><p>选择外圈出生格，再确定你的第一轮资源倾向。所有玩家确认后，首位玩家自动开始。</p></div><div class="setup-progress" id="setupProgress"></div></div>
-  <div class="setup-grid"><div class="setup-block"><span class="setup-label">01 · 出生板块拼接带</span><div id="setupTileHint" class="setup-hint">选择最外圈长条上的初始点</div><div id="setupStrip" class="setup-strip"></div></div><div class="setup-block"><span class="setup-label">02 · 起步资源（木 / 石 / 肉共 4）</span><div id="setupPresets" class="setup-presets"></div></div></div>
+  <div class="setup-grid"><div class="setup-block"><span class="setup-label">01 · 出生板块拼接带</span><div id="setupTileHint" class="setup-hint">选择最外圈长条上的初始点</div><div id="setupStrip" class="setup-strip"></div></div><div class="setup-block"><span class="setup-label">02 · 自选起步资源（总量固定 4）</span><div id="setupPresets" class="setup-presets">${Object.entries({wood:'木材',stone:'石料',meat:'肉食',gold:'黄金'}).map(([key,label])=>`<label class="setup-allocation">${label}<input id="setup_${key}" aria-label="开局${label}" type="number" min="0" max="4" step="1" value="${setupAllocation[key]}"></label>`).join('')}</div><p class="setup-hint" id="allocationHint" aria-live="polite"></p><small>采石场 / 金矿场需 2 石；伐木场需 2 木；牧场需 2 肉。</small></div></div>
   <div class="setup-footer"><span id="setupStatus" class="cmd-status"></span><button class="cmd-btn cmd-primary cmd-lg" id="setupConfirm">确认布置</button></div>
 </section><div class="cmd-groups">
 <section class="cmd-group cmd-todo" role="group" data-group="todo" id="groupTodo" aria-label="本回合待办">
@@ -150,7 +151,12 @@ function buildCommandPanel(){
 </div>
 <section class="game-over-panel" id="gameOverPanel" hidden aria-live="polite"></section>
 <div class="cmd-notice" id="cmdNoticeHost"></div>`;
-  $('setupConfirm').onclick=()=>send({type:"setupReady",spawnTileId:selectedTileId,resourcePreset:setupPreset});
+  $('setupConfirm').onclick=()=>send({type:"setupReady",spawnTileId:selectedTileId,resources:{...setupAllocation}});
+  for(const key of Object.keys(setupAllocation))$('setup_'+key).oninput=()=>{
+    const value=$('setup_'+key).value;
+    setupAllocation[key]=value.trim()===''?NaN:Number(value);
+    if(state)renderSetupPanel(state.public,state.public.players.find(player=>player.playerId===meId));
+  };
   for(const button of $('actionbar').querySelectorAll('[data-action]')){
     commandButtons[button.dataset.action]=button;
     button.onclick=()=>dispatchAction(button.dataset.action);
@@ -170,6 +176,8 @@ function renderSetupPanel(publicState,me){
   const setup=publicState.setup||{};
   const inSetup=publicState.phase==="setup";
   panel.hidden=!inSetup;
+  if(!setupPanelPlaced){$('board').before(panel);setupPanelPlaced=true}
+  $('actionbar').hidden=inSetup;
   const groups=$('actionbar').querySelector('.cmd-groups');
   if(groups)groups.hidden=inSetup;
   if(!inSetup)return;
@@ -178,16 +186,21 @@ function renderSetupPanel(publicState,me){
   const setupChoices=setup.spawnOptions?.[meId]||setup.spawnTiles||[];
   const selected=selectedTileId&&setupChoices.includes(selectedTileId)?selectedTileId:null;
   setText('setupTileHint',selected?`已选 ${selected} · 外圈出生格`:'点击地图上的高亮六角格');
-  const presets=setup.resourcePresets||{};
   const strip=$('setupStrip');
   if(strip){
     strip.innerHTML=setupChoices.map((tileId,index)=>`<button class="strip-tile ${selected===tileId?'selected':''}" data-strip-tile="${esc(tileId)}"><span>${index+1}</span><small>${esc(tileId)}</small></button>`).join('');
     strip.querySelectorAll('[data-strip-tile]').forEach(button=>button.onclick=()=>{selectedTileId=button.dataset.stripTile;renderSetupPanel(publicState,me);renderMap(publicState,me)});
   }
-  $('setupPresets').innerHTML=Object.entries(presets).map(([id,preset])=>`<button class="setup-preset ${setupPreset===id?'selected':''}" data-preset="${esc(id)}"><strong>${esc(preset.label)}</strong><small>${esc(preset.description)}</small></button>`).join('');
-  $('setupPresets').querySelectorAll('[data-preset]').forEach(button=>button.onclick=()=>{setupPreset=button.dataset.preset;renderSetupPanel(publicState,me)});
   const already=!!me?.setupReady;
-  const confirm=$('setupConfirm');confirm.disabled=already||!selected;confirm.textContent=already?'已确认布置':'确认布置';
+  if(already)for(const key of Object.keys(setupAllocation)){
+    setupAllocation[key]=me.resources[key]||0;
+    $('setup_'+key).value=setupAllocation[key];
+  }
+  const values=Object.values(setupAllocation),total=values.reduce((sum,value)=>sum+value,0);
+  const valid=values.every(value=>Number.isInteger(value)&&value>=0)&&total===4;
+  setText('allocationHint',valid?'已分配 4 / 4 · 可以确认':`已分配 ${Number.isFinite(total)?total:'—'} / 4 · 请输入非负整数，合计须为 4`);
+  for(const key of Object.keys(setupAllocation))$('setup_'+key).disabled=already;
+  const confirm=$('setupConfirm');confirm.disabled=already||!selected||!valid;confirm.textContent=already?'已确认布置':'确认布置';
   setText('setupStatus',already?'已锁定出生格与资源，等待其他玩家。':selected?'准备完成后点击确认。':'先选一个高亮出生格。');
 }
 function setCommand(action,state={}){
@@ -492,9 +505,8 @@ function renderMap(publicState, player){
     const canStep=reachable.has(tile.id);
     const icon=tile.trap?"⚠":building?"⌂":tile.feature==="forge"?"⚒":terrain.icon;
     // 有人站上去时，地形图标缩小移到左上角，把格子中央让给棋子，同时保留地形辨识。
-    const iconMarkup=occupants.length
-      ? `<text class="hex-icon hex-icon-corner" x="-30" y="-20">${icon}</text>`
-      : `<text class="hex-icon" y="5">${icon}</text>`;
+    const terrainArt=`<image class="terrain-art" href="/assets/terrain/${TERRAIN[tile.type]?tile.type:'plain'}.svg" x="-37" y="-33" width="74" height="62" opacity="${occupants.length?'.55':'1'}"/>`;
+    const iconMarkup=terrainArt+(tile.trap||building||tile.feature==='forge'?`<text class="hex-icon hex-icon-corner" x="-28" y="-18">${icon}</text>`:'')+`<text class="terrain-label" y="27">${terrain.name}</text>`;
     const positions=pawnLayout(occupants.length);
     const pawns=occupants.map((occupant,index)=>{
       const number=publicState.players.indexOf(occupant)+1;
@@ -514,8 +526,9 @@ function renderMap(publicState, player){
     const claim=tile.claim;
     const claimColor=claim?playerColor(publicState,claim.playerId):"";
     const claimMarkup=claim?`<polygon class="claim-ring" points="${innerPoints}" fill="none" stroke="${claimColor}" stroke-width="3" stroke-opacity=".92"><title>大金矿占领：${esc(claim.nickname||"")}，剩余 ${claim.roundsLeft} 回合</title></polygon><g class="claim-badge"><rect x="-21" y="-35" width="42" height="17" rx="8.5" fill="#141a19" stroke="${claimColor}" stroke-width="1.8"/><circle cx="-11" cy="-26.5" r="5.4" fill="${claimColor}"/><text class="hex-count pawn-number" x="-11" y="-23.9">${publicState.players.findIndex(item=>item.playerId===claim.playerId)+1}</text><text class="hex-count" x="7" y="-22.4">⛏${claim.roundsLeft}</text></g>`:'';
-    const resourceNames={wood:'木',stone:'石',meat:'肉'};
-    return `<g class="hex-cell${selected}${canStep?" reachable":""}${setupTile?" setup-spawn":""}${tile.resource?" has-resource":""}" data-tile="${esc(tile.id)}" transform="translate(${x} ${y})"><title>${esc(tile.trap?"陷阱 · "+(tile.trap.ownerName||"未知"):terrain.name)}${tile.resource?` · 资源：${resourceNames[tile.resource.type]||tile.resource.type} 1（结束回合领取）`:''}</title><polygon points="${hexPoints}" fill="${terrain.color}" stroke="#3f523d" stroke-width="1.2"/><polygon points="${innerPoints}" fill="none" stroke="#ffeec0" stroke-opacity=".14"/>${canStep?`<polygon points="${innerPoints}" fill="none" stroke="#ffe29a" stroke-width="2.4" stroke-dasharray="6 4" stroke-opacity=".9"/>`:''}${setupTile?`<polygon points="${innerPoints}" fill="none" stroke="#8ff0d0" stroke-width="3" stroke-dasharray="5 4"/>`:''}${iconMarkup}${claimMarkup}${pawns}${tile.resource?'<circle class="resource-token" cx="-24" cy="-20" r="5"/><text class="hex-count" x="-24" y="-17" fill="#3b2b17">1</text>':''}</g>`;
+    const resourceNames={wood:'木',stone:'石',meat:'肉',gold:'金'};
+    const resourceMarkup=tile.resource?`<g class="pickup-badge"><rect x="-20" y="-32" width="40" height="15" rx="7.5"/><text x="0" y="-21">${resourceNames[tile.resource.type]||'物'} +${tile.resource.amount}</text></g>`:'';
+    return `<g class="hex-cell${selected}${canStep?" reachable":""}${setupTile?" setup-spawn":""}${tile.resource?" has-resource":""}" data-tile="${esc(tile.id)}" transform="translate(${x} ${y})"><title>${esc(tile.trap?"陷阱 · "+(tile.trap.ownerName||"未知"):terrain.name)}${tile.resource?` · 资源：${resourceNames[tile.resource.type]||tile.resource.type} ${tile.resource.amount}（经过立即拾取，仅一次）`:''}</title><polygon points="${hexPoints}" fill="${terrain.color}" stroke="#3f523d" stroke-width="1.2"/><polygon points="${innerPoints}" fill="none" stroke="#ffeec0" stroke-opacity=".14"/>${canStep?`<polygon points="${innerPoints}" fill="none" stroke="#ffe29a" stroke-width="2.4" stroke-dasharray="6 4" stroke-opacity=".9"/>`:''}${setupTile?`<polygon points="${innerPoints}" fill="none" stroke="#8ff0d0" stroke-width="3" stroke-dasharray="5 4"/>`:''}${iconMarkup}${claimMarkup}${pawns}${resourceMarkup}</g>`;
   }).join('');
   $('board').innerHTML=`<svg class="hex-map" viewBox="0 0 900 900" role="img" aria-label="127 格六角战棋地图"><defs><filter id="mapNoise"><feTurbulence type="fractalNoise" baseFrequency=".045" numOctaves="2" seed="6"/><feColorMatrix values="0 0 0 0 0.12 0 0 0 0 0.14 0 0 0 0 0.09 0 0 0 .17 0"/></filter>${clipDefs.join('')}</defs><rect width="900" height="900" fill="#244d48"/>${cells}<rect width="900" height="900" filter="url(#mapNoise)" pointer-events="none" opacity=".16"/></svg>`;
   if(effects.length)$('board').querySelector('svg')?.append(...effects);
@@ -549,7 +562,7 @@ function renderMap(publicState, player){
   const claimText=selected?.claim?` · 大金矿已被 ${esc(selected.claim.nickname||"")} 占领（剩余 ${selected.claim.roundsLeft} 回合）`:selected?.type==="goldMine"?" · 大金矿可占领，进入即占领并连续 3 回合每回合结束获得 2 金":"";
   const costText=selected&&myTurn?` · 进入消耗 ${terrainCostFor(player,selected)} 格`:'';
   // 用可空写法：即使初始化失败导致提示元素不存在，也不会中断整张地图的渲染。
-  setText('boardHint',selected?`${terrain.name} · ${selected.id}${costText}${selected.feature==="forge"?" · 铁匠铺":""}${selected.building?` · ${selected.building.name}（产出 ${selected.building.output}）`:''}${selected.resource?' · 有资源':''}${claimText}。`:'点击相邻地块移动，或先掷移动骰；地图格之间已紧密拼接；按住右键可拖动地图。');
+  setText('boardHint',selected?`${terrain.name} · ${selected.id}${costText}${selected.feature==="forge"?" · 铁匠铺":""}${selected.building?` · ${selected.building.name}（产出 ${selected.building.output}）`:''}${selected.resource?` · 一次性资源 ${selected.resource.amount}，经过立即拾取`:''}${claimText}。`:'点击相邻地块移动，或先掷移动骰；资源经过立即拾取；滚轮缩放，按住右键拖动地图。');
 }
 // 点击地块：始终更新选中状态；移动阶段点到走得通的相邻格就直接走，不必每格再点一次确认。
 function onTileClick(tileId){

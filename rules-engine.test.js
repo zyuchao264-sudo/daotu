@@ -28,20 +28,49 @@ test('map contains 127 unique, connected hexes',()=>{
   assert.ok(tiles.every(tile=>engine.distance(tile,{q:0,r:0})<=6));
 });
 
-test('内环资源随机生成且只在结束回合时领取',()=>{
+test('地图内外环均有一次性资源且出生格附近可采集',()=>{
   const tiles=engine.createTiles();
   const resources=tiles.filter(tile=>tile.resource);
   assert.ok(resources.length>0);
-  assert.ok(resources.every(tile=>engine.distance(tile,{q:0,r:0})<=4&&tile.resource.amount===1));
+  assert.ok(resources.every(tile=>tile.resource.amount===1&&!['void','fire','riverGod','goldMine','trial'].includes(tile.type)));
+  assert.ok(resources.some(tile=>engine.distance(tile,{q:0,r:0})>=5));
+  for(const anchor of tiles.filter(tile=>engine.distance(tile,{q:0,r:0})===6))assert.ok(resources.some(tile=>engine.distance(tile,anchor)===1));
+});
+
+test('移动经过资源立即领取，离开再进入不重复领取',()=>{
   const {room,player}=roomWithPlayer();
-  const resourceTile=resources[0];
-  const before=player.resources[resourceTile.resource.type];
-  const localTile=room.tiles.find(tile=>tile.id===resourceTile.id);
-  localTile.resource={...resourceTile.resource};
-  player.position=localTile.id;
-  assert.equal(engine.act(room,player,{type:'endTurn'},[]).ok,true);
-  assert.equal(player.resources[localTile.resource?.type||resourceTile.resource.type],before+1);
+  const localTile=room.tiles.find(tile=>tile.id==='1:0');
+  localTile.type='plain';localTile.resource={type:'stone',amount:1};
+  player.movePoints=4;
+  const before=player.resources.stone,actions=player.actionsLeft;
+  assert.equal(engine.act(room,player,{type:'move',tileId:'1:0'},[]).ok,true);
+  assert.equal(player.resources.stone,before+1);
+  assert.equal(player.actionsLeft,actions);
   assert.equal(localTile.resource,null);
+  assert.equal(engine.act(room,player,{type:'move',tileId:'0:0'},[]).ok,true);
+  assert.equal(engine.act(room,player,{type:'move',tileId:'1:0'},[]).ok,true);
+  assert.equal(engine.act(room,player,{type:'endTurn'},[]).ok,true);
+  assert.equal(player.resources.stone,before+1);
+  assert.equal(localTile.resource,null);
+});
+
+test('开局自由分配总量固定并可立即满足金矿场建造费用',()=>{
+  const {room,player}=roomWithPlayer();
+  room.phase='setup';room.setup={spawnTiles:['-6:0']};
+  assert.equal(engine.act(room,player,{type:'setupReady',spawnTileId:'-6:0',resources:{wood:1,stone:2,meat:0,gold:1}},[]).ok,true);
+  assert.deepEqual(player.resources,{wood:1,stone:2,meat:0,gold:1,special:0});
+  const mine=room.tiles.find(tile=>tile.type==='goldMine');player.position=mine.id;player.moved=true;
+  assert.equal(engine.act(room,player,{type:'build',tileId:mine.id,buildingType:'mine'},[]).ok,true);
+  assert.equal(player.resources.stone,0);
+});
+
+test('开局拒绝错误总量、负数、小数、字符串和专属资源，失败不改状态',()=>{
+  for(const resources of [{wood:5},{stone:3},{wood:-1,stone:5},{wood:1.5,stone:2.5},{wood:'4'},{special:4},null]){
+    const {room,player}=roomWithPlayer();room.phase='setup';room.setup={spawnTiles:['-6:0']};
+    const before=structuredClone(player);
+    assert.equal(engine.act(room,player,{type:'setupReady',spawnTileId:'-6:0',resources},[]).ok,false);
+    assert.deepEqual(player,before);
+  }
 });
 
 test('players draw only from their own action deck',()=>{

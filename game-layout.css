@@ -1,6 +1,6 @@
-.game{grid-template-columns:210px minmax(0,1fr) 290px;align-items:start}
+.game{grid-template-columns:175px minmax(0,1fr) 240px;align-items:start}
 .board-wrap{min-height:0;min-width:0}
-.board{flex:none;height:clamp(320px,52vh,540px);min-height:0;overflow:hidden;touch-action:none;cursor:grab}
+.board{flex:none;height:clamp(540px,76vh,1000px);min-height:0;overflow:hidden;touch-action:none;cursor:grab}
 .board.panning,.board.panning .hex-cell{cursor:grabbing}
 .hex-map{width:100%;height:100%;min-width:0;filter:none;display:block}
 .map-toolbar{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin:8px 0 12px}
@@ -8,11 +8,17 @@
 .map-player{display:flex;align-items:center;gap:7px;text-align:left;padding:6px 9px;background:#203c36;border-color:#6b8370;box-shadow:none;font-size:12px}
 .map-player small{display:block;color:#d3c5a7;font-size:11px;margin-top:3px}
 .map-player.selected{border-color:#ffe29a;box-shadow:0 0 0 2px #ffe29a44;background:#5d4929}
-.zoom-controls{display:flex;gap:5px;align-items:center}
+.zoom-controls{display:flex;gap:5px;align-items:center;flex-wrap:wrap;min-width:0}
 .zoom-controls button{padding:6px 10px;box-shadow:none}
-.pan-hint{font-size:11px;color:#bca98a;margin-right:4px;white-space:nowrap}
+.pan-hint{font-size:11px;color:#bca98a;margin-right:4px;white-space:normal}
 #zoomLabel{min-width:45px;text-align:center;font-size:12px}
 .map-pawn{cursor:pointer}
+.terrain-art,.terrain-label,.pickup-badge{pointer-events:none}
+.terrain-label{font-size:8px;text-anchor:middle;fill:#fff2cb;paint-order:stroke;stroke:#253f32;stroke-width:2px;letter-spacing:1px}
+.pickup-badge rect{fill:#f6db93;stroke:#795b30;stroke-width:1}
+.pickup-badge text{font-size:10px;font-weight:700;text-anchor:middle;fill:#3c301f;stroke:none}
+.setup-allocation{display:flex;flex-direction:column;gap:8px;color:#e4d8b6;font-size:12px}
+.setup-allocation input{width:100%;min-width:0;box-sizing:border-box;padding:9px;border:1px solid #779e87;border-radius:8px;background:#112822;color:#fff0c7;font:700 20px Georgia,serif}
 .map-pawn:hover{filter:brightness(1.18)}
 .map-pawn.selected{filter:drop-shadow(0 0 5px #ffe29a)}
 .hex-cell.reachable{cursor:pointer}
@@ -27,6 +33,7 @@
    按钮统一高度/圆角/内边距，按“移动→抽牌→基础行动→目标参数→天赋”分组，
    当前可操作的组高亮，破坏性操作单独分隔。 */
 .actionbar{padding:0;border:0;gap:0}
+.actionbar[hidden],.actionbar [hidden]{display:none!important}
 .command-panel{display:block}
 .actionbar .cmd-groups{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:10px}
 .actionbar .cmd-group{margin:0;padding:9px 11px 11px;background:#1b2a26;border:1px solid #5d6f57;border-radius:12px;min-width:0}
@@ -81,7 +88,7 @@ button.cmd-chip:hover{filter:brightness(1.2)}
 @keyframes combat-hit{0%{filter:brightness(1)}25%{filter:brightness(1.8) saturate(1.4)}55%{filter:brightness(.78)}100%{filter:brightness(1)}}@keyframes spawn-pulse{0%,100%{filter:drop-shadow(0 0 0 #8ff0d000)}50%{filter:drop-shadow(0 0 8px #8ff0d0aa)}}
 @media(max-width:700px){.setup-grid{grid-template-columns:1fr}.setup-presets{grid-template-columns:repeat(2,1fr)}.setup-heading{flex-direction:column}.setup-footer{align-items:stretch;flex-direction:column}}
 @media(max-width:1100px){.game{grid-template-columns:180px minmax(0,1fr)}.right{grid-column:1/-1;max-height:none}.hand{grid-template-columns:repeat(auto-fit,minmax(150px,1fr))}}
-@media(max-width:700px){.game{grid-template-columns:1fr}.right{grid-column:auto}.board{height:380px;min-height:0}.map-player{flex:1;min-width:130px}.side{display:block}.board-head{flex-wrap:wrap;gap:8px}
+@media(max-width:700px){.game{grid-template-columns:1fr}.right{grid-column:auto}.board{height:65vh;min-height:420px}.map-player{flex:1;min-width:130px}.side{display:block}.board-head{flex-wrap:wrap;gap:8px}
   .actionbar .cmd-groups{grid-template-columns:1fr}
   .cmd-btn{height:40px;flex:1;min-width:112px}
   .cmd-footer-actions{width:100%}
